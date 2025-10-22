@@ -34,7 +34,7 @@ userInput.addEventListener('keypress', function(e) {
 
 downloadButton.addEventListener('click', handleDownloadReport);
 uploadButton.addEventListener('click', () => { fileInput.click(); }); // ファイルボタン発火
-fileInput.addEventListener('change', handleFileSelection);           // ファイル選択時の処理
+fileInput.addEventListener('change', handleFileSelection);           // ファイル選択時の処理
 
 // --- 関数定義: ファイル関連 ---
 
@@ -222,7 +222,7 @@ async function handleSendMessage() {
     }
     
     // ★★★ タイムアウト処理の追記開始 ★★★
-    const timeoutDuration = 30000; // 30秒
+    const timeoutDuration = 60000; // 30秒
     const controller = new AbortController();
     const signal = controller.signal;
     
@@ -241,7 +241,7 @@ async function handleSendMessage() {
         });
         
         // ★ 成功またはエラー処理前に、必ずタイマーを解除 ★
-        clearTimeout(timeoutId); 
+        clearTimeout(timeoutId);
 
         // 応答がJSONであることを確認
         if (response.status === 204 || response.headers.get('content-length') === '0') {
@@ -258,7 +258,7 @@ async function handleSendMessage() {
             const newContent = responseJson.report_content;
             const successMessage = responseJson.message;
 
-            // レポート表示を更新（ここで null チェックによりエラーを回避）
+            // レポート表示を更新
             displayReport(newContent);
             
             // チャット履歴にAIの応答を表示
@@ -266,24 +266,32 @@ async function handleSendMessage() {
             displayMessage(`AI: ${responseAction}。${successMessage}`, 'ai');
             
         } else {
-            // エラー時の処理 (response.okがfalseまたはresponseJson.statusが'error')
+            // エラー時の処理 
             const errorMessage = responseJson.message || '不明なエラーが発生しました。';
             displayMessage(`AI: ${errorMessage}`, 'ai');
             
             // レポート内容がエラーでクリアされた場合に対応
             if (responseJson.report_content === null) {
-                 displayReport(''); // 明示的に空文字列を渡し、表示をクリア
+                displayReport(''); // 明示的に空文字列を渡し、表示をクリア
             }
         }
-        
+    
     } catch (error) {
         console.error('通信エラー:', error);
-        // ローディングメッセージが残っていた場合は削除
+        
+        // ★ エラーが発生した場合もタイマーを解除し、ローディングメッセージを削除 ★
+        clearTimeout(timeoutId); 
         if (chatHistory.contains(loadingMessage)) {
             chatHistory.removeChild(loadingMessage);
         }
-        // 発生したエラー自体が TypeError のため、具体的なエラーメッセージを表示
-        displayMessage(`AI: 処理中にエラーが発生しました: ${error.message}`, 'ai');
+
+        // タイムアウトエラー（AbortError）の処理
+        if (error.name === 'AbortError') {
+            displayMessage(`AI: 処理がタイムアウトしました。`, 'ai');
+        } else {
+            // その他の通信エラー
+            displayMessage(`AI: 処理中にエラーが発生しました: ${error.message}`, 'ai');
+        }
         
     } finally {
         // 7. 通信が完了したら、ボタンを有効化
@@ -291,6 +299,6 @@ async function handleSendMessage() {
         
         // 8. ファイル入力をクリア（成功・失敗に関わらず）
         fileInput.value = ''; 
-        renderAttachedFiles(); 
+        renderAttachedFiles();
     }
 }

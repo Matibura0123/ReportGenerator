@@ -47,14 +47,29 @@ def index():
     current_report_content = session.get('report_content', None)
     error_message = None
     
+    if request.method == 'GET':
+        # URLに ?clear=true が含まれていればセッションをクリア
+        if 'clear' in request.args:
+            session.pop('report_content', None)
+            # クリア後、クエリパラメータを削除したページにリダイレクトし、見た目をきれいに保つ
+            current_report_content=None
+        
+        # セッションクリア後の current_report_content を再取得
+        current_report_content = session.get('report_content', None)
+    
     # POSTリクエスト（AJAX/Fetch APIから）
     if request.method == 'POST':
         action = request.form.get('action')
+        if current_report_content:
+            action='refine'
+        else:
+            action='generate'
         
         # 応答用の変数
         new_report_content = current_report_content
         
         # --- 1. 初回レポート生成 ---
+        print(action)
         if action == 'generate':
             initial_prompt = request.form.get('initial_prompt')
             image_file = request.files.get('image_file')
@@ -65,13 +80,12 @@ def index():
                 image_data_base64 = get_base64_image_data_from_upload(image_file) if image_file else None
                 
                 print(">>> レポートを生成中...")
-
-                # ★修正点: タプルを分解して report_text と meta_data で受け取る
-                report_text, meta_data = ai_service.process_report_request(
+                report_text, meta_data = ai_service.process_report_request( # <--- ここでAI応答を待つ
                     initial_prompt, 
                     previous_content=None, 
                     image_data_base64=image_data_base64
                 )
+
 
                 # ★修正点: report_textに対して処理を行う
                 if report_text.startswith("エラー:"):

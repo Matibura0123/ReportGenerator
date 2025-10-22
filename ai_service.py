@@ -42,6 +42,7 @@ def process_report_request(
     previous_content: Optional[str] = None, 
     image_data_base64: Optional[str] = None
 ) -> Tuple[str, Dict[str, Any]]:
+    print(previous_content)
     """
     Gemini APIを呼び出して、レポートを生成または精製し、ログ用メタデータを返します。
     ファイルパスの代わりにBase64エンコードされた画像を直接処理します。
@@ -120,6 +121,7 @@ def process_report_request(
             return f"エラー: {error_msg}", meta_data
     
     # システム命令の設定
+    print(previous_content)
     if previous_content:
         # 精製モードの場合
         system_instruction_text = (
@@ -133,13 +135,11 @@ def process_report_request(
             f"--- REFINEMENT PROMPT ---\n{prompt}\n\n"
             f"上記のレポートを精製（修正・加筆）してください。"
         )
-        print("修正")
     else:
         # 初回生成モードの場合
         system_instruction_text = (
             "あなたはプロのレポート作成者です。依頼されたテーマと提供された画像（もしあれば）に基づいて、読みやすく、構造化された、詳細なレポートを日本語で作成してください。見出しにはMarkdown記法を使用してください。"
         )
-        print("新規")
         user_query = prompt
 
     # コンテンツリストにテキストプロンプトを追加
@@ -153,8 +153,7 @@ def process_report_request(
             config={
                 "system_instruction": system_instruction_text,
                 "temperature": 0.7
-            },
-            timeout=60.0
+            }
         )
         
         # 応答から生成されたテキストを抽出
