@@ -4,7 +4,11 @@ import requests
 from google import genai
 from google.genai.errors import APIError
 import logger_service 
-
+import base64
+from io import BytesIO
+from PIL import Image
+from typing import Optional, Tuple, Dict, Any, List
+from google.api_core.exceptions import DeadlineExceeded
 # --- 設定 ---
 # 警告: セキュリティ上の理由から、本番環境ではこの方法でAPIキーを直接記述しないでください。
 # 環境変数よりもコード内記述を優先します。
@@ -30,20 +34,38 @@ except Exception as e:
     client = None
     print(f"警告: Gemini Clientの初期化に失敗しました。詳細: {e}")
 
-def process_report_request(prompt: str, previous_content: str = None, file_paths: list[str] = None, request_type: str = 'initial_generation') -> tuple[str, dict]:
+# def process_report_request(prompt: str, previous_content: str = None, file_paths: list[str] = None, request_type: str = 'initial_generation') -> tuple[str, dict]:
+
+# process_report_requestの引数とロジックを修正
+def process_report_request(
+    initial_prompt: str, 
+    previous_content: Optional[str] = None, 
+    image_data_base64: Optional[str] = None
+) -> Tuple[str, Dict[str, Any]]:
     """
     Gemini APIを呼び出して、レポートを生成または精製し、ログ用メタデータを返します。
+    ファイルパスの代わりにBase64エンコードされた画像を直接処理します。
 
     Args:
-        prompt (str): ユーザーからの指示。
-        previous_content (str): 精製対象のレポート内容。
-        file_paths (list[str]): アップロードされたローカルファイルのパスのリスト。
-        request_type (str): リクエストの種類 ('initial_generation' または 'refinement').
+        initial_prompt (str): ユーザーからの指示（初回生成プロンプトまたは精製指示）。
+        previous_content (str): 精製対象のレポート内容 (Noneの場合は初回生成)。
+        image_data_base64 (str): Base64エンコードされた画像データ（接頭辞なし）。
 
     Returns:
         tuple[str, dict]: (生成または精製されたレポートテキスト、ログ用メタデータ辞書)
     """
-    meta_data = {
+    
+    # ★ 内部で使用する変数の定義と初期化
+    # 1. request_type: previous_contentの有無で判断
+    request_type = 'refinement' if previous_content is not None else 'initial_generation'
+    
+    # 2. prompt: 処理で使用するプロンプトを initial_prompt に設定 (名前を統一)
+    prompt = initial_prompt
+    
+    # 3. file_paths: Base64処理に移行するため、利用しない（またはBase64をパーツとして扱う）
+    files_attached = bool(image_data_base64)
+
+    meta_data: Dict[str, Any] = {
         'model_name': MODEL_NAME,
         'input_tokens': 0,
         'output_tokens': 0,
@@ -55,38 +77,47 @@ def process_report_request(prompt: str, previous_content: str = None, file_paths
         return "エラー: Gemini Clientが初期化されていません。APIキーが正しく設定されているか確認してください。", meta_data
 
     # ファイルのアップロードと参照の準備
-    uploaded_files = []
-    contents = []
-    
+    uploaded_files: List[Any] = [] # Gemini Fileオブジェクトを格納
+    contents: List[Any] = [] # APIリクエストに渡すコンテンツパーツ
+
     # --- 処理開始ログ ---
+    # request_type, prompt, files_attached 変数を使用
     logger_service.log_to_firestore('INFO', 
                                     'Report generation/refinement started', 
                                     request_type, 
                                     prompt, 
                                     previous_content_exists=bool(previous_content),
-                                    files_attached=len(file_paths) if file_paths else 0)
+                                    files_attached=files_attached)
     # --------------------
     
-    if file_paths:
-        for path in file_paths:
-            try:
-                # ファイルをアップロードし、Fileオブジェクトを取得
-                file = client.files.upload(file=path)
-                uploaded_files.append(file)
-                # コンテンツリストにFileオブジェクトを追加
-                contents.append(file)
-            except Exception as e:
-                # アップロード失敗時も後でファイルをクリーンアップするためリストに追加
-                print(f"ファイル {path} のアップロードに失敗しました: {e}")
-                # ログを記録して処理を終了
-                error_msg = f"ファイルのアップロード中に問題が発生しました ({os.path.basename(path)})"
-                logger_service.log_to_firestore('ERROR', 
-                                                error_msg, 
-                                                request_type, 
-                                                prompt, 
-                                                error_detail=str(e),
-                                                **meta_data)
-                return f"エラー: {error_msg}", meta_data
+    # ★ Base64画像の処理ロジック
+    if image_data_base64:
+        try:
+            # Base64デコード
+            img_data = base64.b64decode(image_data_base64)
+            img = Image.open(BytesIO(img_data))
+            
+            # 一時ファイルとして保存し、Gemini APIにアップロード
+            # 注: クリーンアップが必要なため、一時ファイルを使用する
+            temp_file_path = "temp_image.png"
+            img.save(temp_file_path)
+
+            file = client.files.upload(file=temp_file_path)
+            uploaded_files.append(file)
+            contents.append(file)
+            
+            # 一時ファイルを削除
+            os.remove(temp_file_path)
+            
+        except Exception as e:
+            error_msg = f"画像のBase64デコードまたはアップロードに失敗しました: {e}"
+            logger_service.log_to_firestore('ERROR', 
+                                            error_msg, 
+                                            request_type, 
+                                            prompt, 
+                                            error_detail=str(e),
+                                            **meta_data)
+            return f"エラー: {error_msg}", meta_data
     
     # システム命令の設定
     if previous_content:
@@ -102,11 +133,13 @@ def process_report_request(prompt: str, previous_content: str = None, file_paths
             f"--- REFINEMENT PROMPT ---\n{prompt}\n\n"
             f"上記のレポートを精製（修正・加筆）してください。"
         )
+        print("修正")
     else:
         # 初回生成モードの場合
         system_instruction_text = (
-            "あなたはプロのレポート作成者です。依頼されたテーマと提供されたファイル（もしあれば）に基づいて、読みやすく、構造化された、詳細なレポートを日本語で作成してください。見出しにはMarkdown記法を使用してください。"
+            "あなたはプロのレポート作成者です。依頼されたテーマと提供された画像（もしあれば）に基づいて、読みやすく、構造化された、詳細なレポートを日本語で作成してください。見出しにはMarkdown記法を使用してください。"
         )
+        print("新規")
         user_query = prompt
 
     # コンテンツリストにテキストプロンプトを追加
@@ -116,11 +149,12 @@ def process_report_request(prompt: str, previous_content: str = None, file_paths
     try:
         response = client.models.generate_content(
             model=MODEL_NAME,
-            contents=contents, # ファイルとテキストプロンプトの両方を含む
+            contents=contents, # ファイル（またはBase64画像）とテキストプロンプトの両方を含む
             config={
                 "system_instruction": system_instruction_text,
                 "temperature": 0.7
-            }
+            },
+            timeout=60.0
         )
         
         # 応答から生成されたテキストを抽出
@@ -143,6 +177,9 @@ def process_report_request(prompt: str, previous_content: str = None, file_paths
         # ----------------
         
         return generated_text, meta_data
+    except DeadlineExceeded:
+        print("エラー: AIサービスからの応答がタイムアウトしました。")
+        return "エラー: AIサービスからの応答がタイムアウトしました。", None
 
     except APIError as e:
         print(f"APIリクエストエラー (SDK): {e}")
@@ -171,12 +208,12 @@ def process_report_request(prompt: str, previous_content: str = None, file_paths
         return f"エラー: {error_msg}", meta_data
         
     finally:
-        # ★ アップロードしたファイルをクリーンアップ (重要!)
         for file in uploaded_files:
             try:
                 client.files.delete(name=file.name)
             except Exception as e:
                 print(f"ファイル {file.name} の削除に失敗しました: {e}")
+
 
 
 def get_api_key_status() -> str:

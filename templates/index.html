@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIレポート作成チャット</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div id="app-container">
+        <div id="chat-area">
+            <div id="chat-history">
+                <div class="ai-message">こんにちは！レポート作成を始めましょう。</div>
+            </div>
+            
+            <div id="input-area">
+                
+                <div id="attached-files">
+        </div>
+
+                <textarea id="user-input" placeholder="質問や指示を入力してください..."></textarea>
+                
+                <div id="file-upload-container">
+                    <input type="file" id="file-input" multiple style="display: none;">
+                    
+                    <button id="upload-button" title="ファイルを選択">
+                        +
+                    </button>
+                </div>
+
+                <button id="send-button" title="送信">
+                    &#x25B2; </button>
+            </div>
+        </div>
+
+        <div id="report-area">
+            <div id="report-display">
+                <p>ここにレポートの内容が表示されます</p>
+            </div>
+            
+            <div id="report-footer">
+                <div id="download-box">
+                    <span>レポート.txt</span>
+                    <button id="download-button">download</button>
+                </div>
+                <div id="char-count">0 文字</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
