@@ -8,7 +8,7 @@ from flask import Flask, render_template, request, session, redirect, url_for, j
 # --- アプリケーション設定 ---
 app = Flask(__name__)
 # セッションを使用するためのシークレットキー。本番環境では安全な値に設定してください。
-app.config['SECRET_KEY'] = 'your_very_secret_key_for_flask_session' 
+app.config['SECRET_KEY'] = 'your_very_secret_and_long_key_for_session'
 
 # --- ユーティリティ関数 (ファイルパスではなくアップロードされたファイルオブジェクトを処理) ---
 
@@ -51,22 +51,29 @@ def index():
         # URLに ?clear=true が含まれていればセッションをクリア
         if 'clear' in request.args:
             session.pop('report_content', None)
-            # クリア後、クエリパラメータを削除したページにリダイレクトし、見た目をきれいに保つ
-            current_report_content=None
+            
+            # クリア後、クエリパラメータを削除したページにリダイレクト
+            # url_for('index') は '/' を指す
+            return redirect(url_for('index')) # <--- ここでリダイレクトを確定させる
         
-        # セッションクリア後の current_report_content を再取得
+        # セッションクリア後の current_report_content を再取得（リダイレクトがなければ実行）
         current_report_content = session.get('report_content', None)
     
     # POSTリクエスト（AJAX/Fetch APIから）
     if request.method == 'POST':
         action = request.form.get('action')
-        if current_report_content:
-            action='refine'
-        else:
-            action='generate'
         
         # 応答用の変数
         new_report_content = current_report_content
+        
+        # if current_report_content and action == 'generate':
+        #     print("WARNING: Client sent 'generate' but session has content. Forcing 'refine'.")
+        #     action = 'refine' 
+        
+        # # セッションにレポート内容がないにもかかわらず、クライアントが 'refine' を送ってきた場合は 'generate' に強制
+        if not current_report_content and action == 'refine':
+            print("WARNING: Client sent 'refine' but session is empty. Forcing 'generate'.")
+            action = 'generate'
         
         # --- 1. 初回レポート生成 ---
         print(action)
@@ -118,6 +125,15 @@ def index():
         
         # 処理後のレポート内容をセッションに保存
         session['report_content'] = new_report_content
+        saved_content = session.get('report_content')
+        if saved_content:
+            # 成功した場合: 内容の長さと最初の50文字を出力
+            print(f"DEBUG: Session 'report_content' saved successfully.")
+            print(f"DEBUG: Length: {len(saved_content)} chars.")
+            print(f"DEBUG: Start: {saved_content[:50].replace('\n', ' ')}...")
+        else:
+            # 失敗した場合: None または空として保存されたことを示す
+            print(f"DEBUG: WARNING! Session 'report_content' is None or empty after saving.")
 
         # ★修正点: リダイレクトを削除し、JSONを返す
         response_data = {

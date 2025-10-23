@@ -237,7 +237,8 @@ async function handleSendMessage() {
             method: 'POST',
             body: formData,
             // ★ AbortControllerのsignalをfetchオプションに追加 ★
-            signal: signal 
+            signal: signal ,
+            credentials: 'include'
         });
         
         // ★ 成功またはエラー処理前に、必ずタイマーを解除 ★
