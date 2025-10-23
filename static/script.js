@@ -111,7 +111,18 @@ function removeFile(indexToRemove) {
 // --- 関数定義: チャット・レポート機能 ---
 
 function getReportContent() {
-    return reportDisplay ? reportDisplay.innerText.trim() : '';
+    if (!reportDisplay) {
+        return '';
+    }
+    const content = reportDisplay.innerText.trim();
+    
+    // ★★★ プレースホルダーテキストと空文字列を明示的にチェック ★★★
+    const placeholderText = 'ここにレポートの内容が表示されます'; 
+    
+    if (content === placeholderText || content === '') {
+        return '';
+    }
+    return content;
 }
 
 // ★ 修正箇所: displayReport

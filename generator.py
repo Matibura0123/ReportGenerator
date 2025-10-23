@@ -1,3 +1,4 @@
+from datetime import timedelta
 import ai_service
 from io import BytesIO
 from typing import Optional
@@ -9,6 +10,10 @@ from flask import Flask, render_template, request, session, redirect, url_for, j
 app = Flask(__name__)
 # セッションを使用するためのシークレットキー。本番環境では安全な値に設定してください。
 app.config['SECRET_KEY'] = 'your_very_secret_and_long_key_for_session'
+app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# ★★★ セッションの有効期限を延長する設定（例: 30日間） ★★★
+app.permanent_session_lifetime = timedelta(days=30)
 
 # --- ユーティリティ関数 (ファイルパスではなくアップロードされたファイルオブジェクトを処理) ---
 
@@ -45,7 +50,17 @@ def index():
 
     # セッションから現在のレポート内容を取得
     current_report_content = session.get('report_content', None)
+    
+    # ★★★ 追加/変更: リクエスト開始時のセッション状態をログに出力 ★★★
+    # セッションから現在のレポート内容を取得
+    current_report_content = session.get('report_content', None)
     error_message = None
+    if request.method == 'POST':
+        if current_report_content:
+            length = len(current_report_content)
+            print(f"DEBUG: POST Request received. Session is ACTIVE. Content length: {length}.")
+        else:
+            print("DEBUG: POST Request received. Session is EMPTY (None/Reset).")
     
     if request.method == 'GET':
         # URLに ?clear=true が含まれていればセッションをクリア
