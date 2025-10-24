@@ -170,7 +170,7 @@ def process_report_request(
         else:
             # 初回生成モードの場合
             # 
-            if image_data_base64:
+            if image_data_base64 or uploaded_file_data:
                 system_instruction_text = (
                     "あなたはプロの読書感想文作成者です。提供された画像（もしあれば）に基づいて、読みやすく、構造化された、詳細な読書感想文を日本語で作成してください。見出しにはMarkdown記法を使用してください。"
                 )
