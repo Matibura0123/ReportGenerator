@@ -41,7 +41,8 @@ except Exception as e:
 def process_report_request(
     initial_prompt: str, mode="general_report",
     previous_content: Optional[str] = None, 
-    image_data_base64: Optional[str] = None
+    image_data_base64: Optional[str] = None,
+    uploaded_file_data: Optional[str]=None
 ) -> Tuple[str, str,Dict[str, Any]]:
     print(previous_content)
     """
@@ -145,7 +146,7 @@ def process_report_request(
     elif mode=="book_report":
         if previous_content:
             # 精製モードの場合
-            if image_data_base64:
+            if image_data_base64 or uploaded_file_data:
                 system_instruction_text = (
                     "あなたはプロの編集者兼読書感想文作成者です。提供された読書感想文の内容（PREVIOUS REPORT）を、"
                     "新しい指示（REFINEMENT PROMPT）に従って完全に修正し、新しい読書感想文全文をMarkdown形式で出力してください。 "
