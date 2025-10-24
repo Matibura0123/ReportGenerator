@@ -39,7 +39,7 @@ except Exception as e:
 
 # process_report_requestの引数とロジックを修正
 def process_report_request(
-    initial_prompt: str, mode="generate",
+    initial_prompt: str, mode="general_report",
     previous_content: Optional[str] = None, 
     image_data_base64: Optional[str] = None
 ) -> Tuple[str, str,Dict[str, Any]]:
@@ -122,7 +122,7 @@ def process_report_request(
             return f"エラー: {error_msg}", meta_data
     
     # システム命令の設定
-    if mode=="generate":
+    if mode=="general_report":
         if previous_content:
             # 精製モードの場合
             system_instruction_text = (
@@ -142,20 +142,30 @@ def process_report_request(
                 "あなたはプロのレポート作成者です。依頼されたテーマと提供された画像（もしあれば）に基づいて、読みやすく、構造化された、詳細なレポートを日本語で作成してください。見出しにはMarkdown記法を使用してください。"
             )
             user_query = prompt
-    elif mode=="impression":
+    elif mode=="book_report":
         if previous_content:
             # 精製モードの場合
-            system_instruction_text = (
-                "あなたはプロの編集者兼読書感想文作成者です。提供された読書感想文の内容（PREVIOUS REPORT）を、"
-                "新しい指示（REFINEMENT PROMPT）に従って完全に修正し、新しい読書感想文全文をMarkdown形式で出力してください。 "
-                "出力は新しい修正後のレポートのみとし、指示やコメントは含めないでください。"
-            )
-            # ユーザープロンプト：過去の内容と新しい指示を結合
-            user_query = (
-                f"--- PREVIOUS REPORT ---\n{previous_content}\n\n"
-                f"--- REFINEMENT PROMPT ---\n{prompt}\n\n"
-                f"上記の読書感想文を精製（修正・加筆）してください。"
-            )
+            if image_data_base64:
+                system_instruction_text = (
+                    "あなたはプロの編集者兼読書感想文作成者です。提供された読書感想文の内容（PREVIOUS REPORT）を、"
+                    "新しい指示（REFINEMENT PROMPT）に従って完全に修正し、新しい読書感想文全文をMarkdown形式で出力してください。 "
+                    "出力は新しい修正後のレポートのみとし、指示やコメントは含めないでください。"
+                )
+                # ユーザープロンプト：過去の内容と新しい指示を結合
+                user_query = (
+                    f"--- PREVIOUS REPORT ---\n{previous_content}\n\n"
+                    f"--- REFINEMENT PROMPT ---\n{prompt}\n\n"
+                    f"上記の読書感想文を精製（修正・加筆）してください。"
+                )
+            else:
+                error_msg = "エラー: 参照元となる文章が提供されていません。"
+                logger_service.log_to_firestore('ERROR', 
+                                        error_msg, 
+                                        request_type, 
+                                        initial_prompt, 
+                                        error_detail="Empty prompt provided.",
+                                        **meta_data)
+                return error_msg, meta_data
         else:
             # 初回生成モードの場合
             # 
