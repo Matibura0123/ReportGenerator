@@ -1,24 +1,25 @@
-from flask import Flask, render_template, request, redirect, url_for, session
 import ai_service
-import base64
-import os
 from io import BytesIO
-from typing import Optional
+from typing import Optional, Tuple
+import os
+import base64
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 
 # --- アプリケーション設定 ---
 app = Flask(__name__)
 # セッションを使用するためのシークレットキー。本番環境では安全な値に設定してください。
-app.config['SECRET_KEY'] = 'your_very_secret_key_for_flask_session' 
+app.config['SECRET_KEY'] = 'your_very_secret_key_for_flask_session'
 
-# --- ユーティリティ関数 (ファイルパスではなくアップロードされたファイルオブジェクトを処理) ---
+# --- ユーティリティ関数 ---
 
 def get_base64_image_data_from_upload(file) -> Optional[str]:
     """
-    アップロードされたファイルオブジェクトからBase64エンコードされたデータを取得します。
+    アップロードされた画像ファイルオブジェクトからBase64エンコードされたデータを取得します。
     """
-    if file.filename == '':
+    # ファイルオブジェクトがNoneでないこと、ファイル名があることを確認
+    if not file or not file.filename:
         return None
-    
+
     try:
         # ファイルの内容をメモリ上で読み込み、Base64エンコード
         image_data = file.read()
@@ -27,82 +28,171 @@ def get_base64_image_data_from_upload(file) -> Optional[str]:
         print(f"[エラー] 画像ファイルの読み込み中にエラーが発生しました: {e}")
         return None
 
+def get_uploaded_file_bytes(file) -> Optional[Tuple[bytes, str]]:
+    """
+    アップロードされたファイルオブジェクトからバイトデータとファイル名を返します。
+    """
+    # ファイルオブジェクトがNoneでないこと、ファイル名があることを確認
+    if not file or not file.filename:
+        return None
+    
+    try:
+        # ファイルの内容をメモリ上で読み込み
+        file_bytes = file.read()
+        file_name = file.filename
+        return file_bytes, file_name
+    except Exception as e:
+        print(f"[エラー] ファイルの読み込み中にエラーが発生しました: {e}")
+        return None
+
+
 # --- Flask ルート定義 ---
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     """
     レポートの生成と精製を処理するメインルート。
+    POSTリクエスト（AI処理）全体をtry-exceptで囲み、必ずJSONで応答するように修正。
     """
-    print("test1")
     api_key_status = ai_service.get_api_key_status()
     if api_key_status == 'missing':
-        # APIキーエラーはテンプレートに渡して表示
-        return render_template('index.html', error_message="APIキーが設定されていません。ai_service.pyを確認してください。")
+        # APIキーがない場合、GET/POSTでそれぞれ適切なエラーを返す
+        error_msg = "APIキーが設定されていません。ai_service.pyを確認してください。"
+        if request.method == 'GET':
+            return render_template('index.html', error_message=error_msg)
+        else:
+            return jsonify({'status': 'error', 'message': error_msg}), 500
 
-    # セッションから現在のレポート内容を取得（初回アクセス時はNone）
+    # セッションから現在のレポート内容を取得
     current_report_content = session.get('report_content', None)
     error_message = None
-
+    
+    if request.method == 'GET':
+        # セッションクリア処理
+        if 'clear' in request.args:
+            session.pop('report_content', None)
+            current_report_content = None
+            
+        current_report_content = session.get('report_content', None)
+        return render_template(
+            'index.html',
+            report_content=current_report_content,
+            error_message=error_message,
+            model_name=ai_service.get_model_name()
+        )
+    
+    # POSTリクエスト（AJAX/Fetch APIから）
     if request.method == 'POST':
-        # フォームから送信されたアクションを識別
-        action = request.form.get('action')
         
-        if action == 'generate':
-            # --- 1. 初回レポート生成 ---
+        # ★★ POSTリクエスト全体をtry-exceptで囲み、HTML応答を防ぐ ★★
+        try:
+            # 現在のレポート内容の有無に基づいて 'generate' または 'refine' を決定
+            action = 'refine' if current_report_content else 'generate'
+            
+            # 応答用の変数
+            new_report_content = current_report_content
+            meta_data = None 
+            
+            # フォームデータからプロンプトとアップロードファイルを取得
             initial_prompt = request.form.get('initial_prompt')
             image_file = request.files.get('image_file')
+            book_file = request.files.get('book_file') 
+            
+            # 感想文モードの判定
+            is_book_report_mode = request.form.get('mode') == 'book_report'
 
-            if not initial_prompt:
-                error_message = "テーマを入力してください。"
-            else:
-                image_data_base64 = get_base64_image_data_from_upload(image_file) if image_file else None
-                
-                print(">>> レポートを生成中...")
-
-                current_report_content = ai_service.process_report_request(
-                    initial_prompt, 
-                    previous_content=None,
-                    image_data_base64=image_data_base64
-                )
-                
-                if current_report_content.startswith("エラー:"):
-                    error_message = current_report_content
-                    current_report_content = None # エラー時はレポート内容をクリア
-                
-        elif action == 'refine' and current_report_content:
-            # --- 2. レポート精製 ---
-            refinement_prompt = request.form.get('refinement_prompt')
-
-            if not refinement_prompt:
-                error_message = "ブラッシュアップの指示を入力してください。"
-            else:
-                print(">>> レポートを精製中...")
-
-                refined_report_content = ai_service.process_report_request(
-                    refinement_prompt, 
-                    previous_content=current_report_content,
-                    image_data_base64=None # 精製時には画像は使用しない
-                )
-
-                if not refined_report_content.startswith("エラー:"):
-                    current_report_content = refined_report_content
+            # --- 1. レポート/感想文 生成 ---
+            if action == 'generate':
+                if not initial_prompt and not book_file:
+                    error_message = "テーマまたは書籍ファイルを入力/アップロードしてください。"
                 else:
-                    error_message = refined_report_content
+                    image_data_base64 = None
+                    uploaded_file_data = None
+                    file_error = None
+
+                    # ★★ ファイル処理の排他制御を強化 ★★
+                    if is_book_report_mode and book_file and book_file.filename:
+                        # 書籍ファイルがアップロードされた場合
+                        uploaded_file_data = get_uploaded_file_bytes(book_file)
+                        if uploaded_file_data is None:
+                             file_error = "書籍ファイルの読み込みに失敗しました。"
+
+                    elif not is_book_report_mode and image_file and image_file.filename:
+                        # 画像ファイルがアップロードされた場合
+                        image_data_base64 = get_base64_image_data_from_upload(image_file)
+                        if image_data_base64 is None:
+                            file_error = "画像ファイルの読み込みに失敗しました。"
                     
-        # 処理後のレポート内容をセッションに保存
-        session['report_content'] = current_report_content
+                    if file_error:
+                        error_message = file_error
+                        
+                    elif not error_message: # エラーがない場合のみAI処理を実行
+                        print(">>> レポート/感想文を生成中...")
+                        
+                        # ai_service.process_report_requestを呼び出し
+                        report_text, meta_data = ai_service.process_report_request( 
+                            prompt=initial_prompt, 
+                            previous_content=None, 
+                            image_data_base64=image_data_base64,
+                            uploaded_file_data=uploaded_file_data, # (bytes, filename) または None
+                            mode='book_report' if is_book_report_mode else 'general_report'
+                        )
 
-        # フォーム送信後はGETリクエストにリダイレクトし、二重送信を防ぐ
-        return redirect(url_for('index'))
+                        if report_text.startswith("エラー:"):
+                            error_message = report_text
+                            new_report_content = None
+                        else:
+                            new_report_content = report_text
+                        
+            # --- 2. レポート/感想文 精製 ---
+            elif action == 'refine' and current_report_content:
+                refinement_prompt = request.form.get('initial_prompt')
 
-    # GETリクエスト、またはPOSTリクエスト後の表示
-    return render_template(
-        'index.html',
-        report_content=current_report_content,
-        error_message=error_message,
-        model_name=ai_service.get_model_name()
-    )
+                if not refinement_prompt:
+                    error_message = "ブラッシュアップの指示を入力してください。"
+                else:
+                    print(">>> レポート/感想文を精製中...")
+
+                    refined_text, meta_data = ai_service.process_report_request(
+                        prompt=refinement_prompt, 
+                        previous_content=current_report_content,
+                        image_data_base64=None,
+                        uploaded_file_data=None, 
+                        mode='book_report' if is_book_report_mode else 'general_report' # モードを引き継ぐ
+                    )
+
+                    if not refined_text.startswith("エラー:"):
+                        new_report_content = refined_text
+                    else:
+                        error_message = refined_text
+            
+            # 処理後のレポート内容をセッションに保存
+            session['report_content'] = new_report_content
+
+            # JSONを返す
+            response_data = {
+                'status': 'success' if not error_message else 'error',
+                'report_content': new_report_content,
+                'message': error_message or ('感想文が正常に生成されました。' if is_book_report_mode else 'レポートが正常に生成されました。'),
+                'meta_data': meta_data,
+                'action_type': action
+            }
+            
+            status_code = 200 if response_data['status'] == 'success' else 400
+            return jsonify(response_data), status_code
+
+        # ★★ 例外処理ブロック ★★
+        except Exception as e:
+            # サーバー側で予期せぬエラーが発生した場合
+            print(f"[クリティカルエラー] POSTリクエスト処理中に予期せぬエラーが発生しました: {type(e).__name__}: {e}")
+            
+            # HTMLではなく、必ずJSONでエラーを返す（HTTP 500）
+            return jsonify({
+                'status': 'error',
+                'report_content': None, # レポート内容をクリア
+                'message': f"サーバー内部エラーが発生しました。ログを確認してください: {type(e).__name__}"
+            }), 500
+
 
 @app.route('/clear_session', methods=['POST'])
 def clear_session():
@@ -110,7 +200,7 @@ def clear_session():
     セッションをクリアし、新しいレポート作成を開始するためのルート。
     """
     session.pop('report_content', None)
-    return redirect(url_for('index'))
+    return jsonify({'status': 'success', 'message': 'セッションをクリアしました'}), 200
 
 if __name__ == '__main__':
     # デバッグモードを有効にして実行 (本番環境では無効にしてください)
