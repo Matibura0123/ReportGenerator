@@ -84,6 +84,8 @@ def process_report_request(
             return f"エラー: {error_msg}", meta_data
 
     # --- システム命令構築 ---
+    system_instruction_text = ""
+    user_query = ""
     if mode == "general_report":
         if previous_content:
             system_instruction_text = (
@@ -99,11 +101,30 @@ def process_report_request(
                 "あなたはプロのレポート作成者です。依頼されたテーマと提供された画像（もしあれば）に基づいて、構造化された日本語レポートを作成してください。"
             )
             user_query = prompt
-    else:
-        system_instruction_text = "あなたはプロの編集者です。"
-        user_query = prompt
-
+    elif mode=="book_report":
+        # ... (中略: book_reportモードのロジックは前回と同じ)
+        if previous_content:
+            system_instruction_text = (
+                "あなたはプロの編集者兼読書感想文作成者です。提供された読書感想文の内容（PREVIOUS REPORT）を、"
+                "新しい指示（REFINEMENT PROMPT）に従って完全に修正し、新しい読書感想文全文をMarkdown形式で出力してください。 "
+                "出力は新しい修正後のレポートのみとし、指示やコメントは含めないでください。"
+            )
+            user_query = (
+                f"--- PREVIOUS REPORT ---\n{previous_content}\n\n"
+                f"--- REFINEMENT PROMPT ---\n{prompt}\n\n"
+                f"上記の読書感想文を精製（修正・加筆）してください。"
+            )
+        else:
+            system_instruction_text = (
+                "あなたはプロの読書感想文作成者です。提供された参照元（文章または画像）と、"
+                "要約・感想文の指示（USER PROMPT）に基づき、依頼された内容を出力してください。見出しにはMarkdown記法を使用してください。感想文の形式で記述してください。"
+            )
+            user_query = f"--- USER PROMPT ---\n{prompt}\n\n上記の参照元に対する処理（要約または感想文作成）を実行してください。"
+    
+    # ファイル内容があれば、それをユーザープロンプトの前に結合
     final_text_prompt = full_text_content + user_query
+
+    # コンテンツリストに最終的なテキストプロンプトを追加
     if final_text_prompt:
         contents.append(final_text_prompt)
 
