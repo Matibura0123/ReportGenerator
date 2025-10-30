@@ -52,7 +52,7 @@ def initialize_firebase_logger():
         is_logger_enabled = False
         return False
 
-def log_to_firestore(log_level: str, message: str, request_type: str, user_prompt: str, response_content: str = None, error_detail: str = None, **kwargs):
+def log_to_firestore(log_level: str, message: str, user_prompt: str, response_content: str = None, error_detail: str = None, **kwargs):
     """
     構造化されたログデータをFirestoreの 'app_logs' コレクションに書き込む。
     """
@@ -66,7 +66,6 @@ def log_to_firestore(log_level: str, message: str, request_type: str, user_promp
         'timestamp': datetime.datetime.now(datetime.timezone.utc),
         'level': log_level,
         'message': message,
-        'request_type': request_type,
         'user_prompt': user_prompt,
         'response_summary': response_summary,
         'error_detail': error_detail,
