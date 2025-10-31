@@ -13,7 +13,7 @@ from typing import Optional, Tuple, Dict, Any, List
 from google.api_core.exceptions import DeadlineExceeded
 
 # --- 設定 ---
-# 実際のキーに置き換えてください。本番環境では環境変数を使用することを推奨します。
+# 【重要】ご提示いただいたキーを初期値として設定します。環境変数 'GEMINI_API_KEY' があればそちらが優先されます。
 HARDCODED_API_KEY = "AIzaSyAnWQR85rRFZzMxMnOwkmNgmNoi8YxM4rE" 
 
 API_KEY = os.getenv('GEMINI_API_KEY') or HARDCODED_API_KEY
@@ -30,21 +30,19 @@ except Exception as e:
     client_status = 'error'
     print(f"致命的な警告: Gemini Clientの初期化に失敗しました。詳細: {e}")
 
-# --- ユーティリティ関数: ファイルデコードの堅牢化 ---
+# --- ユーティリティ関数: ファイルデコードの堅牢化 (変更なし) ---
 def decode_uploaded_text(file_bytes: bytes, file_name: str) -> Tuple[Optional[str], Optional[str]]:
     """
     バイトデータをUTF-8、CP932の順にデコードし、成功したテキストとエラーメッセージを返す。
     """
-    for encoding in ['utf-8', 'cp932', 'shift_jis']: # 複数のエンコーディングを試行
+    for encoding in ['utf-8', 'cp932', 'shift_jis']: 
         try:
             return file_bytes.decode(encoding), None
         except UnicodeDecodeError:
             continue
         except Exception as e:
-            # その他の予期せぬデコードエラー
             return None, f"予期せぬデコードエラーが発生しました: {type(e).__name__}"
     
-    # すべて失敗
     return None, f"ファイル '{file_name}' のデコードに失敗しました（UTF-8, CP932などを試行）。"
 
 
@@ -56,8 +54,7 @@ def process_report_request(
     uploaded_file_data: Optional[Tuple[bytes, str]] = None
 ) -> Tuple[Optional[str], Optional[str], Dict[str, Any]]:
     """
-    レポート生成または精製を実行する。
-    戻り値: (生成テキスト, エラーメッセージ, メタデータ)
+    レポート生成または精製を実行する。戻り値: (生成テキスト, エラーメッセージ, メタデータ)
     """
     request_type = 'refinement' if previous_content is not None else 'initial_generation'
     prompt = initial_prompt
@@ -76,7 +73,7 @@ def process_report_request(
     contents: List[Any] = []
     full_text_content = ""
 
-    # --- Base64画像の処理 ---
+    # --- ファイル/画像処理 (変更なし) ---
     if image_data_base64:
         try:
             img_data = base64.b64decode(image_data_base64)
@@ -84,22 +81,19 @@ def process_report_request(
             contents.append(img)
         except Exception as e:
             error_msg = f"画像のBase64デコードまたは処理に失敗しました: {e}"
-            # logger_service.log_to_firestore('ERROR', error_msg, prompt, error_detail=str(e), **meta_data)
             return None, error_msg, meta_data
 
-    # --- アップロードされたテキストファイルの処理 ---
     if uploaded_file_data:
         file_bytes, file_name = uploaded_file_data
         
         file_text, decode_error = decode_uploaded_text(file_bytes, file_name)
         
         if decode_error:
-            # logger_service.log_to_firestore('ERROR', decode_error, prompt, error_detail=decode_error, **meta_data)
             return None, decode_error, meta_data
             
         full_text_content += f"--- 参照元ファイル: {file_name} ---\n{file_text}\n--- 参照元ファイル 終了 ---\n\n"
 
-    # --- システム命令構築 ---
+    # --- システム命令構築 (変更なし) ---
     system_instruction_text = ""
     user_query = ""
     
@@ -147,42 +141,66 @@ def process_report_request(
     if final_text_prompt:
         contents.append(final_text_prompt)
 
-    # --- API呼び出しとログ ---
-    # logger_service.log_to_firestore('INFO', 'API call initiated', ...)
+    # --- API呼び出しとRAG実装 ---
     try:
         response = client.models.generate_content(
             model=MODEL_NAME,
             contents=contents,
             config={
                 "system_instruction": system_instruction_text,
-                "temperature": 0.7
+                "temperature": 0.7,
+                # RAG実装: Google Search Toolを有効にする
+                "tools": [{"google_search": {}}] 
             }
         )
 
         generated_text = response.text
+        
+        # ★修正済みRAG実装: 参照元（Grounding Metadata）を取得し、レポートに追加する★
+        citations = []
+        grounding_metadata = response.candidates[0].grounding_metadata if (
+            response.candidates and 
+            response.candidates[0].grounding_metadata
+        ) else None
+        
+        # Grounding Metadataが存在し、かつ web属性も存在するかどうかをチェック
+        if grounding_metadata and hasattr(grounding_metadata, 'web'):
+            web_info = grounding_metadata.web
+            
+            if hasattr(web_info, 'web_entities'):
+                web_entities = web_info.web_entities
+                
+                # 参照元をリストに格納
+                for i, entity in enumerate(web_entities):
+                    if entity.uri:
+                        title = entity.title or "不明な参照元"
+                        # Markdown形式で整形: 番号. [タイトル](URL)
+                        citations.append(f"{i + 1}. [{title}]({entity.uri})")
+
+        # レポートテキストに参照元を追加
+        if citations:
+            citation_list = "\n".join(citations)
+            generated_text += "\n\n---\n\n## 参照元・出典\n" + citation_list
+            
+        # トークン計測 (変更なし)
         usage_metadata = response.usage_metadata
         if usage_metadata:
             meta_data['input_tokens'] = usage_metadata.prompt_token_count
             meta_data['output_tokens'] = usage_metadata.candidates_token_count
             meta_data['total_tokens'] = usage_metadata.total_token_count
 
-        # logger_service.log_to_firestore('INFO', 'API call successful', ...)
-        # 成功時は (テキスト, エラーメッセージ=None, メタデータ) を返す
         return generated_text, None, meta_data
 
     except DeadlineExceeded:
         error_msg = "AIサービスからの応答がタイムアウトしました。"
-        # logger_service.log_to_firestore('ERROR', error_msg, prompt, **meta_data)
         return None, error_msg, meta_data
 
     except APIError as e:
         error_msg = f"Gemini API呼び出し中にエラーが発生しました: {e}"
-        # logger_service.log_to_firestore('ERROR', error_msg, prompt, error_detail=str(e), **meta_data)
         return None, error_msg, meta_data
 
     except Exception as e:
         error_msg = f"予期せぬエラーが発生しました: {e}"
-        # logger_service.log_to_firestore('ERROR', error_msg, prompt, error_detail=str(e), **meta_data)
         return None, error_msg, meta_data
 
 
