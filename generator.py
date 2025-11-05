@@ -307,5 +307,5 @@ def clear_session():
 
 if __name__ == '__main__':
     # ★Firebaseロガーを初期化
-    logger_service.initialize_logger_service()
+    logger_service.initialize_firebase_logger()
     app.run(debug=True)
