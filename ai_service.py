@@ -10,6 +10,10 @@ from PIL import Image
 from typing import Optional, Tuple, Dict, Any, List
 from google.api_core.exceptions import DeadlineExceeded
 
+# テスト用にここを変える
+user_id='tanii'
+workspace_id='taniiPC'
+
 # --- 設定 ---
 # ---------------------------------------------------------------
 # ↓↓↓ここにAPIキーを直接記述してください↓↓↓
@@ -69,7 +73,7 @@ def process_report_request(
             contents.append(img)
         except Exception as e:
             error_msg = f"画像のBase64デコードまたは処理に失敗しました: {e}"
-            logger_service.log_to_firestore('ERROR', error_msg, prompt, error_detail=str(e), **meta_data)
+            logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, error_detail=str(e), **meta_data)
             return f"エラー: {error_msg}", meta_data
 
     # --- ファイル処理 ---
@@ -80,7 +84,7 @@ def process_report_request(
             full_text_content += f"--- 参照元ファイル: {file_name} ---\n{file_text}\n--- 参照元ファイル 終了 ---\n\n"
         except UnicodeDecodeError as e:
             error_msg = f"ファイルのデコードに失敗しました: {e}"
-            logger_service.log_to_firestore('ERROR', error_msg, prompt, error_detail=str(e), **meta_data)
+            logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, error_detail=str(e), **meta_data)
             return f"エラー: {error_msg}", meta_data
 
     # --- システム命令構築 ---
@@ -135,6 +139,8 @@ def process_report_request(
         'INFO',
         'API call initiated',
         prompt,
+        user_id,
+        workspace_id,
         previous_content_exists=bool(previous_content),
         files_attached=bool(image_data_base64)
     )
@@ -159,6 +165,8 @@ def process_report_request(
             'INFO',
             'API call successful',
             prompt,
+            user_id,
+            workspace_id,
             response_content=generated_text,
             **meta_data
         )
@@ -166,17 +174,17 @@ def process_report_request(
 
     except DeadlineExceeded:
         error_msg = "エラー: AIサービスからの応答がタイムアウトしました。"
-        logger_service.log_to_firestore('ERROR', error_msg, prompt, **meta_data)
+        logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, **meta_data)
         return error_msg, meta_data
 
     except APIError as e:
         error_msg = f"Gemini API呼び出し中にエラーが発生しました: {e}"
-        logger_service.log_to_firestore('ERROR', error_msg, prompt, error_detail=str(e), **meta_data)
+        logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, error_detail=str(e), **meta_data)
         return f"エラー: {error_msg}", meta_data
 
     except Exception as e:
         error_msg = f"予期せぬエラーが発生しました: {e}"
-        logger_service.log_to_firestore('ERROR', error_msg, prompt, error_detail=str(e), **meta_data)
+        logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, error_detail=str(e), **meta_data)
         return f"エラー: {error_msg}", meta_data
 
 

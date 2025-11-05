@@ -1,4 +1,6 @@
 import ai_service
+import logger_service # ★Firebaseロガーをインポート
+from firebase_admin import firestore # ★Firestoreクエリのためにインポート
 from typing import Optional, Tuple, Dict, Any
 import os
 import base64
@@ -8,54 +10,82 @@ from io import BytesIO
 
 # --- アプリケーション設定 ---
 app = Flask(__name__)
-
-# 【注意】Flaskセッションは使用しませんが、Flaskのデバッグモード警告を回避するために設定を残します。
 app.config['SECRET_KEY'] = 'a_very_secret_and_fixed_key_for_dev_only_2'
 
-# 【重要】認証済みのユーザーIDをシミュレート
-# 実際にはFirebase Authなどから取得する必要があります。
-DEFAULT_USER_ID = 'default_user_123' 
-
-# --- データベースシミュレータ（実際はFirestoreに置き換える部分） ---
-# キー: "userId:workspaceId" で、特定のユーザーの特定のデバイスでの作業を一意に識別します。
+# --- データベースシミュレータ（delete_report_from_db のみで使用） ---
+# ※ getとsaveはFirestoreロジックに置き換えられました。
 REPORT_DB_SIMULATOR: Dict[str, str] = {}
-DB_LOCK = Lock() # スレッドセーフのためのロック
+DB_LOCK = Lock()
 
 def get_report_from_db(user_id: str, workspace_id: str) -> Optional[str]:
     """
-    【DB処理シミュレーション】Firestoreから特定のワークスペースIDのレポートを取得します。
+    【Firestore変更】app_logsから最新の有効なレポート内容を取得します。
     """
-    key = f"{user_id}:{workspace_id}"
-    with DB_LOCK:
-        report = REPORT_DB_SIMULATOR.get(key)
-        # 実際はFirestore: doc(db, 'artifacts', appId, 'users', userId, 'reports', workspaceId).get().data().get('content')
-        print(f"[DB SIM] GET key='{key}'. Content exists: {report is not None}")
-        return report
+    if not logger_service.is_logger_enabled:
+        print("[DB] Logger disabled, cannot get report from logs.")
+        return None
+        
+    try:
+        db = logger_service.db
+        
+        # ユーザーの指示通りのクエリ
+        query = db.collection('app_logs') \
+                  .where('user_id', '==', user_id) \
+                  .where('workspace_id', '==', workspace_id) \
+                  .where('response_summary', '!=', None) \
+                  .order_by('timestamp', direction=firestore.Query.DESCENDING) \
+                  .limit(1)
+                  
+        results = query.stream()
+        
+        # 最初のドキュメントを取得
+        first_doc = next(results, None)
+        
+        if first_doc:
+            content = first_doc.to_dict().get('response_summary')
+            print(f"[DB GET] Found log for key='{user_id}:{workspace_id}'. Content length: {len(content if content else 0)}")
+            return content
+        else:
+            print(f"[DB GET] No log found for key='{user_id}:{workspace_id}'.")
+            return None
+            
+    except Exception as e:
+        print(f"[エラー] Firestoreからのログ取得中にエラー: {e}")
+        return None
 
-def save_report_to_db(user_id: str, workspace_id: str, content: str) -> None:
+def save_report_to_db(user_id: str, workspace_id: str, content: str, prompt: str = "N/A", mode: str = "N/A") -> None:
     """
-    【DB処理シミュレーション】Firestoreにレポートを保存または更新します。
+    【Firestore変更】処理結果をapp_logsに記録します。
     """
-    key = f"{user_id}:{workspace_id}"
-    with DB_LOCK:
-        REPORT_DB_SIMULATOR[key] = content
-        # 実際はFirestore: setDoc(doc(db, 'artifacts', appId, 'users', userId, 'reports', workspaceId), {content: content, timestamp: serverTimestamp()})
-        print(f"[DB SIM] SAVE key='{key}'. Content length: {len(content)}")
+    if not logger_service.is_logger_enabled:
+        print("[DB] Logger disabled, cannot save report to logs.")
+        return
+
+    try:
+        logger_service.log_to_firestore(
+            log_level='INFO',
+            message='レポート保存/更新',
+            user_prompt=prompt,
+            response_content=content, # response_summaryはロガー内部で処理される
+            user_id=user_id,
+            workspace_id=workspace_id,
+            mode=mode
+        )
+        print(f"[DB SAVE] Logged report for key='{user_id}:{workspace_id}'. Content length: {len(content)}")
+    except Exception as e:
+        print(f"[エラー] Firestoreへのログ保存中にエラー: {e}")
+
 
 def delete_report_from_db(user_id: str, workspace_id: str) -> bool:
     """
-    【DB処理シミュレーション】Firestoreから特定のワークスペースIDのレポートを削除します。
+    【Firestore変更】ログは削除しないため、この操作は常に成功を返します。
+    クライアントが新しいIDを生成できるようにします。
     """
-    key = f"{user_id}:{workspace_id}"
-    with DB_LOCK:
-        if key in REPORT_DB_SIMULATOR:
-            del REPORT_DB_SIMULATOR[key]
-            print(f"[DB SIM] DELETED key='{key}'.")
-            return True
-        return False
+    print(f"[DB DELETE] Log-based system. Deletion skipped for key='{user_id}:{workspace_id}'.")
+    return True
 
 
-# --- ユーティリティ関数 ---
+# --- ユーティリティ関数 (変更なし) ---
 
 def get_base64_image_data_from_upload(file) -> Optional[str]:
     """
@@ -95,26 +125,21 @@ def get_uploaded_file_bytes(file) -> Optional[Tuple[bytes, str]]:
 def index():
     """
     レポートの生成と精製を処理するメインルート。
-    Flaskセッションの代わりに、クライアントから渡されるworkspace_idを使用します。
     """
-    # 【重要】ユーザー認証ID
-    user_id = DEFAULT_USER_ID 
-
+    
     # ----------------------------------------------------
     # GETリクエストの場合 (初期表示)
     # ----------------------------------------------------
     if request.method == 'GET':
+        # ★ご要望通り、GETの時は前回のデータを参照しない
         api_key_status = ai_service.get_api_key_status()
         if api_key_status == 'missing':
             error_msg = "APIキーが設定されていません。ai_service.pyを確認してください。"
             return render_template('index.html', error_message=error_msg)
             
-        # GET時には、DBからレポートは取得せず、クライアントサイドでworkspaceIdが設定されるのを待つ
-        current_report_content = None
-
         return render_template(
             'index.html',
-            report_content=current_report_content, # 初期値としてNoneを渡す
+            report_content=None, # 初期値としてNoneを渡す
             error_message=None,
             model_name=ai_service.get_model_name()
         )
@@ -123,14 +148,17 @@ def index():
     # POSTリクエスト（AJAX/Fetch APIから）
     # ----------------------------------------------------
     if request.method == 'POST':
-        try:
-            # 【重要】フォームデータからワークスペースIDを取得
-            workspace_id = request.form.get('workspace_id')
-            if not workspace_id:
-                # workspace_idがない場合、データの取り違えを防ぐため処理を拒否
-                return jsonify({'status': 'error', 'message': 'ワークスペースIDがリクエストに含まれていません。', 'report_content': None}), 400
+        
+        # ★ご要望に基づき、ユーザーIDとワークスペースIDをハードコード
+        user_id = 'tanii'
+        workspace_id = 'taniiPC'
 
-            # データベースから現在のレポート内容を取得
+        try:
+            # フォームから渡されるworkspace_idは使用しない (ログ出力用には取得)
+            workspace_id_from_form = request.form.get('workspace_id')
+            print(f"Processing for Hardcoded IDs: User='{user_id}', Workspace='{workspace_id}' (Form ID ignored: '{workspace_id_from_form}')")
+
+            # ★Firestoreのログから現在のレポート内容を取得
             current_report_content = get_report_from_db(user_id, workspace_id)
             
             # レポート内容の有無に基づいて 'generate' または 'refine' を決定
@@ -150,6 +178,7 @@ def index():
                 if not initial_prompt and not (is_book_report_mode and book_file and book_file.filename) and not (not is_book_report_mode and image_file and image_file.filename):
                     error_message = "テーマ、またはファイルを入力/アップロードしてください。"
                 else:
+                    # (ファイル処理ロジック ... 変更なし)
                     image_data_base64 = None
                     uploaded_file_data = None
                     file_error = None
@@ -206,9 +235,27 @@ def index():
                     else:
                         error_message = refined_text.replace("エラー:", "").strip()
 
-            # --- 【重要】DBへの保存処理 (セッションへの保存から置き換え) ---
-            if new_report_content:
-                save_report_to_db(user_id, workspace_id, new_report_content)
+            # --- ★【重要】Firestoreログへの保存処理 ---
+            if new_report_content and not error_message:
+                save_report_to_db(
+                    user_id=user_id, 
+                    workspace_id=workspace_id, 
+                    content=new_report_content,
+                    prompt=initial_prompt, # ログ用にプロンプトを渡す
+                    mode=request.form.get('mode') # ログ用にモードを渡す
+                )
+            elif error_message:
+                 # ★エラーが発生した場合もログに残す
+                logger_service.log_to_firestore(
+                    log_level='ERROR',
+                    message=f"レポート {action} 失敗",
+                    user_prompt=initial_prompt,
+                    error_detail=error_message,
+                    user_id=user_id,
+                    workspace_id=workspace_id,
+                    mode=request.form.get('mode')
+                )
+
 
             # JSONを返す
             response_data = {
@@ -225,6 +272,16 @@ def index():
         # 例外処理ブロック
         except Exception as e:
             print(f"[クリティカルエラー] POST処理中に予期せぬエラー: {type(e).__name__}: {e}")
+            # ★例外エラーもログに残す
+            logger_service.log_to_firestore(
+                log_level='CRITICAL',
+                message="POST処理中に予期せぬ例外",
+                user_prompt=request.form.get('initial_prompt', 'N/A'),
+                error_detail=str(e),
+                user_id=user_id,
+                workspace_id=workspace_id,
+                mode=request.form.get('mode', 'N/A')
+            )
             return jsonify({
                 'status': 'error',
                 'report_content': None, 
@@ -235,22 +292,20 @@ def index():
 @app.route('/clear_session', methods=['POST'])
 def clear_session():
     """
-    【修正】DBのワークスペースIDデータを削除する処理に置き換え。
+    DBのワークスペースIDデータを削除する処理（シミュレーション）。
     """
-    user_id = DEFAULT_USER_ID
+    # ★ハードコードされたIDを使用
+    user_id = 'tanii'
+    workspace_id = 'taniiPC' # クライアントから送られてきたIDは無視
     
-    # クライアントから送信されたworkspace_idを取得
-    data = request.get_json(silent=True)
-    workspace_id = data.get('workspace_id') if data else None
-
-    if workspace_id:
-        if delete_report_from_db(user_id, workspace_id):
-            return jsonify({'status': 'success', 'message': 'レポートを削除し、新規ワークスペースを開始します'}), 200
-        else:
-             # データがDBになかった場合でも成功として扱う
-             return jsonify({'status': 'success', 'message': 'クリア対象のレポートはありませんでした'}), 200
+    # ログは削除しない (delete_report_from_db が True を返す)
+    if delete_report_from_db(user_id, workspace_id):
+        return jsonify({'status': 'success', 'message': 'レポートを削除し、新規ワークスペースを開始します'}), 200
+    else:
+         return jsonify({'status': 'success', 'message': 'クリア対象のレポートはありませんでした'}), 200
     
-    return jsonify({'status': 'error', 'message': 'ワークスペースIDがリクエストに含まれていません'}), 400
 
 if __name__ == '__main__':
+    # ★Firebaseロガーを初期化
+    logger_service.initialize_logger_service()
     app.run(debug=True)

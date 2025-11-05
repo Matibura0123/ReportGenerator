@@ -4,16 +4,11 @@ from firebase_admin import firestore
 import datetime
 import os
 import sys
+from typing import Optional
 
 # --- 設定 ---
-# 1. サービスアカウントキーのファイルパスを指定してください。
-#    本番環境では環境変数を使用することを強く推奨しますが、テスト用に直接パスを指定することも可能です。
-# ---------------------------------------------------------------
-# ユーザー様の設定に合わせて、ファイルパスを 'repo-gen.json' に修正しました。
-# ---------------------------------------------------------------
 CREDENTIAL_PATH = os.environ.get('FIREBASE_CREDENTIALS_PATH', 'repo-gen.json')
 # ---------------------------------------------------------------
-
 
 db = None
 is_logger_enabled = False
@@ -27,7 +22,6 @@ def initialize_firebase_logger():
     if is_logger_enabled:
         return True
 
-    # os.path.join(os.path.dirname(__file__), CREDENTIAL_PATH) を使用して、
     # スクリプトファイルからの相対パスを確実に解決
     absolute_credential_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), CREDENTIAL_PATH)
 
@@ -52,9 +46,21 @@ def initialize_firebase_logger():
         is_logger_enabled = False
         return False
 
-def log_to_firestore(log_level: str, message: str, user_prompt: str, response_content: str = None, error_detail: str = None, **kwargs):
+def log_to_firestore(
+    log_level: str, 
+    message: str, 
+    user_prompt: str, 
+    # 【追加】ユーザー認識情報 (必須)
+    user_id: str, 
+    # 【追加】デバイス/ワークスペース認識情報 (必須)
+    workspace_id: str,
+    response_content: Optional[str] = None, 
+    error_detail: Optional[str] = None, 
+    **kwargs
+):
     """
     構造化されたログデータをFirestoreの 'app_logs' コレクションに書き込む。
+    ユーザーIDとワークスペースIDを含める。
     """
     if not is_logger_enabled:
         return
@@ -66,6 +72,10 @@ def log_to_firestore(log_level: str, message: str, user_prompt: str, response_co
         'timestamp': datetime.datetime.now(datetime.timezone.utc),
         'level': log_level,
         'message': message,
+        # --- 認識情報 ---
+        'user_id': user_id, 
+        'workspace_id': workspace_id,
+        # ----------------
         'user_prompt': user_prompt,
         'response_summary': response_summary,
         'error_detail': error_detail,
@@ -75,6 +85,7 @@ def log_to_firestore(log_level: str, message: str, user_prompt: str, response_co
     try:
         # 'app_logs' コレクションにドキュメントを追加
         db.collection('app_logs').add(log_data)
+        # print(f"ログをFirestoreに書き込みました (Level: {log_level}, User: {user_id})") # デバッグ用
     except Exception as e:
         # ログ書き込みエラーはアプリの主要なロジックを止めない
         print(f"警告: ログをFirestoreに書き込めませんでした: {e}")
