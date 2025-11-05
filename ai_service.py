@@ -86,6 +86,8 @@ def process_report_request(
     # --- システム命令構築 ---
     system_instruction_text = ""
     user_query = ""
+    print(mode)
+    print(previous_content)
     if mode == "general_report":
         if previous_content:
             system_instruction_text = (
