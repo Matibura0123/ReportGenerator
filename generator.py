@@ -130,13 +130,41 @@ def index():
     # ----------------------------------------------------
     # GETリクエストの場合 (初期表示)
     # ----------------------------------------------------
+    user_id = 'tanii'
+    workspace_id = 'taniiPC'
     if request.method == 'GET':
         # ★ご要望通り、GETの時は前回のデータを参照しない
         api_key_status = ai_service.get_api_key_status()
         if api_key_status == 'missing':
             error_msg = "APIキーが設定されていません。ai_service.pyを確認してください。"
             return render_template('index.html', error_message=error_msg)
-            
+        error_message = None
+        meta_data = None 
+        new_report_content="　"
+        initial_prompt="GET(PageReset)"
+        action='generate'
+        save_report_to_db(
+            user_id=user_id, 
+            workspace_id=workspace_id, 
+            content=new_report_content,
+            prompt=initial_prompt, # ログ用にプロンプトを渡す
+            mode='general_report' # ログ用にモードを渡す
+        )
+        save_report_to_db(
+            user_id=user_id, 
+            workspace_id=workspace_id, 
+            content=new_report_content,
+            prompt=initial_prompt, # ログ用にプロンプトを渡す
+            mode='book_report' # ログ用にモードを渡す
+        )
+
+        response_data = {
+            'status': 'success' if not error_message else 'error',
+            'report_content': new_report_content,
+            'message':'ページが更新されました',
+            'meta_data': meta_data,
+            'action_type': action
+        }
         return render_template(
             'index.html',
             report_content=None, # 初期値としてNoneを渡す
@@ -150,9 +178,6 @@ def index():
     if request.method == 'POST':
         
         # ★ご要望に基づき、ユーザーIDとワークスペースIDをハードコード
-        user_id = 'tanii'
-        workspace_id = 'taniiPC'
-
         try:
             # フォームから渡されるworkspace_idは使用しない (ログ出力用には取得)
             workspace_id_from_form = request.form.get('workspace_id')
@@ -162,7 +187,10 @@ def index():
             current_report_content = get_report_from_db(user_id, workspace_id)
             
             # レポート内容の有無に基づいて 'generate' または 'refine' を決定
-            action = 'refine' if current_report_content else 'generate'
+            if current_report_content !="　":
+                action='refine'
+            else:
+                action='generate'
             
             error_message = None
             new_report_content = current_report_content

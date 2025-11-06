@@ -10,7 +10,7 @@ from PIL import Image
 from typing import Optional, Tuple, Dict, Any, List
 from google.api_core.exceptions import DeadlineExceeded
 
-# テスト用にここを変える
+# テスト用:ここを変える
 user_id='tanii'
 workspace_id='taniiPC'
 
@@ -97,6 +97,7 @@ def process_report_request(
             system_instruction_text = (
                 "あなたはプロの編集者兼レポート作成者です。提供されたレポートの内容（PREVIOUS REPORT）を、"
                 "新しい指示（REFINEMENT PROMPT）に従って完全に修正し、新しいレポート全文をMarkdown形式で出力してください。"
+                "出力は新しいレポートのみとし、指示やコメントは含めないでください。"
             )
             user_query = (
                 f"--- PREVIOUS REPORT ---\n{previous_content}\n\n--- REFINEMENT PROMPT ---\n{prompt}\n\n"
@@ -105,6 +106,7 @@ def process_report_request(
         else:
             system_instruction_text = (
                 "あなたはプロのレポート作成者です。依頼されたテーマと提供された画像（もしあれば）に基づいて、構造化された日本語レポートを作成してください。"
+                "出力は新しいレポートのみとし、指示やコメントは含めないでください。"
             )
             user_query = prompt
     elif mode=="book_report":
@@ -124,6 +126,7 @@ def process_report_request(
             system_instruction_text = (
                 "あなたはプロの読書感想文作成者です。提供された参照元（文章または画像）と、"
                 "要約・感想文の指示（USER PROMPT）に基づき、依頼された内容を出力してください。見出しにはMarkdown記法を使用してください。感想文の形式で記述してください。"
+                "出力は新しいレポートのみとし、指示やコメントは含めないでください。"
             )
             user_query = f"--- USER PROMPT ---\n{prompt}\n\n上記の参照元に対する処理（要約または感想文作成）を実行してください。"
     
