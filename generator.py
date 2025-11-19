@@ -215,3 +215,4 @@ def clear_session():
 if __name__ == '__main__':
     # デバッグモードを有効にして実行 (本番環境では無効にしてください)
     app.run(debug=True)
+
