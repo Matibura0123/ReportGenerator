@@ -4,4 +4,4 @@ pip install google-api-core
 
 pip install google-genai
 
-AIzaSyAnWQR85rRFZzMxMnOwkmNgmNoi8YxM4rE
+AIzaSyCG1Suwlc_Ccj0bvaOa_LKe1IMO-uHs3mQ
