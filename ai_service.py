@@ -11,13 +11,13 @@ from typing import Optional, Tuple, Dict, Any, List
 from google.api_core.exceptions import DeadlineExceeded
 
 # テスト用:ここを変える
-user_id='tanii'
-workspace_id='taniiPC'
+user_id='trial'
+workspace_id=''
 
 # --- 設定 ---
 # ---------------------------------------------------------------
 # ↓↓↓ここにAPIキーを直接記述してください↓↓↓
-HARDCODED_API_KEY = "AIzaSyAnWQR85rRFZzMxMnOwkmNgmNoi8YxM4rE"
+HARDCODED_API_KEY = "AIzaSyDcFSFyVueKAovHubSFU74K0cIVKhxegt0"
 # ---------------------------------------------------------------
 
 # 環境変数が設定されていればそれを使い、なければハードコードされたキーを使用

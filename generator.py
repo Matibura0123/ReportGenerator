@@ -177,17 +177,19 @@ def index():
     # ----------------------------------------------------
     if request.method == 'POST':
         
-        # ★ご要望に基づき、ユーザーIDとワークスペースIDをハードコード
         try:
-            # フォームから渡されるworkspace_idは使用しない (ログ出力用には取得)
-            workspace_id_from_form = request.form.get('workspace_id')
-            print(f"Processing for Hardcoded IDs: User='{user_id}', Workspace='{workspace_id}' (Form ID ignored: '{workspace_id_from_form}')")
+            # ★【変更点】クライアントから送られた workspace_id を取得
+            # 存在しない場合は 'DEFAULT_POST_WORKSPACE' をフォールバックとして使用
+            workspace_id = request.form.get('workspace_id', 'DEFAULT_POST_WORKSPACE')
+            print(f"Processing for User ID: '{user_id}', Dynamic Workspace ID: '{workspace_id}'")
 
             # ★Firestoreのログから現在のレポート内容を取得
             current_report_content = get_report_from_db(user_id, workspace_id)
             
             # レポート内容の有無に基づいて 'generate' または 'refine' を決定
-            if current_report_content !="　":
+            if current_report_content is None:
+                action='generate'
+            elif current_report_content !="　":
                 action='refine'
             else:
                 action='generate'
