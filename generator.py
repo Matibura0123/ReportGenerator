@@ -4,7 +4,7 @@ from firebase_admin import firestore
 from typing import Optional, Tuple
 import base64
 from flask import Flask, render_template, request, jsonify
-import requests # pip install requests が必要
+import requests
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'dev_key_fixed_for_demo'
@@ -13,14 +13,13 @@ app.config['SECRET_KEY'] = 'dev_key_fixed_for_demo'
 def get_report_from_db(user_id: str, workspace_id: str) -> Tuple[Optional[str], Optional[str]]:
     """
     app_logsから最新レポートとモードを取得。Storage URLがあればDLする。
-    戻り値: (content, mode)
     """
     if not logger_service.is_logger_enabled:
         return None, None
         
     try:
         db = logger_service.db
-        # timestampの降順で最新1件を取得
+        # report_urlを持っているドキュメントを優先的に探すロジックはそのまま
         query = db.collection('app_logs') \
                   .where('user_id', '==', user_id) \
                   .where('workspace_id', '==', workspace_id) \
@@ -34,7 +33,6 @@ def get_report_from_db(user_id: str, workspace_id: str) -> Tuple[Optional[str], 
             data = first_doc.to_dict()
             log_mode = data.get('mode')
             
-            # Storage URLがある場合
             if 'report_url' in data and data['report_url']:
                 try:
                     resp = requests.get(data['report_url'])
@@ -51,24 +49,32 @@ def get_report_from_db(user_id: str, workspace_id: str) -> Tuple[Optional[str], 
         return None, None
 
 def save_report_to_db(user_id: str, workspace_id: str, content: str, prompt: str, mode: str) -> None:
+    """
+    コンテンツをStorageに保存し、URLをFirestoreに記録
+    ★ここが唯一の成功ログ保存ポイントになります
+    """
     if not logger_service.is_logger_enabled: return
+
     try:
         report_url = None
-        # 空文字でなければStorageへ保存
+        # Storageへ保存
         if content and len(content) > 0 and content != "　":
             report_url = logger_service.save_report_to_storage(content, user_id, workspace_id)
         
+        # Firestoreへログ記録
+        # response_summary には URL を入れる (テキスト全文は入れない)
         logger_service.log_to_firestore(
             log_level='INFO',
             message='レポート保存/更新',
-            user_prompt=prompt,
-            response_content=content if not report_url else None,
-            response_summary=report_url if report_url else None,
+            user_prompt=prompt, # ここでプロンプトも保存される
+            response_content=content if not report_url else None, # URLがあれば生テキストは保存しない
+            response_summary=report_url if report_url else None,  # URLをサマリーに入れる
             user_id=user_id,
             workspace_id=workspace_id,
             mode=mode,
             report_url=report_url
         )
+        print(f"[DB SAVE] Saved to {'Storage' if report_url else 'Firestore'}")
     except Exception as e:
         print(f"[Error] DB Save failed: {e}")
 
@@ -93,34 +99,27 @@ def get_base64_image_data_from_upload(file):
 # --- Routes ---
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    user_id = 'tanii' 
-    # GET時のデフォルトIDはPOSTでは使われないため、リセットには影響しません
-    
+    user_id = 'tanii'
+    default_ws = 'taniiPC'
+
     if request.method == 'GET':
         if ai_service.get_api_key_status() == 'missing':
             return render_template('index.html', error_message="APIキー未設定")
-        
-        # ★修正: GET時はDB操作をせず、単にHTMLを返すだけにする
-        # JS側で新しいIDが生成されるため、サーバー側でのリセットログ書き込みは不要
+        # GET時はログ保存しない（ページリセットのみ）
         return render_template('index.html', report_content=None, model_name=ai_service.get_model_name())
 
     if request.method == 'POST':
         try:
-            # JSから送られてきた動的なIDを使用
-            ws_id = request.form.get('workspace_id', 'default_error_ws')
+            ws_id = request.form.get('workspace_id', default_ws)
             current_mode = request.form.get('mode')
             
-            # DBから直前の状態を取得
             fetched_content, last_mode = get_report_from_db(user_id, ws_id)
             
-            # ★ モード変更検知ロジック ★
-            # 1. 履歴がない -> 新規
-            # 2. 前回のモードと今回のモードが違う -> コンテキストリセット(新規)
             if not fetched_content or fetched_content == "　":
                 current_content = None
             elif last_mode != current_mode:
                 print(f"[Info] Mode changed ({last_mode}->{current_mode}). Resetting context.")
-                current_content = None # これにより ai_service に previous_content=None が渡る
+                current_content = None
             else:
                 current_content = fetched_content
 
@@ -142,7 +141,6 @@ def index():
                     img_b64 = get_base64_image_data_from_upload(img_file)
                     book_data = get_uploaded_file_bytes(book_file)
                     
-                    # generateなので previous_content=None で呼ぶ
                     text, meta = ai_service.process_report_request(
                         prompt, user_id, ws_id,
                         mode=current_mode, 
@@ -159,7 +157,7 @@ def index():
                     text, meta = ai_service.process_report_request(
                         prompt, user_id, ws_id,
                         mode=current_mode,
-                        previous_content=current_content # 履歴を引き継ぐ
+                        previous_content=current_content
                     )
                     if text.startswith("エラー:"): error_msg = text
                     else: new_content = text

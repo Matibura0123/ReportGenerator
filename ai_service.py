@@ -10,7 +10,6 @@ from typing import Optional, Tuple, Dict, Any, List
 from google.api_core.exceptions import DeadlineExceeded
 
 # --- 設定 ---
-# ★ユーザー提供のAPIキー
 HARDCODED_API_KEY = "AIzaSyD8EdjL2N2g7j1e42ebc-MdAzOZtjrj5VE"
 # ---------------------------------------------------------------
 
@@ -34,8 +33,8 @@ except Exception as e:
 
 def process_report_request(
     initial_prompt: str,
-    user_id: str,        # ★必須: ログ用
-    workspace_id: str,   # ★必須: ログ用
+    user_id: str,
+    workspace_id: str,
     mode="general_report",
     previous_content: Optional[str] = None,
     image_data_base64: Optional[str] = None,
@@ -104,8 +103,8 @@ def process_report_request(
     if final_text_prompt:
         contents.append(final_text_prompt)
 
-    # API呼び出し
-    logger_service.log_to_firestore('INFO', 'API call initiated', prompt, user_id, workspace_id, **meta_data)
+    # ★削除: API呼び出し開始時のログ (user_prompt送信時) を削除
+    # logger_service.log_to_firestore('INFO', 'API call initiated', ...) 
     
     try:
         response = client.models.generate_content(
@@ -119,7 +118,9 @@ def process_report_request(
             meta_data['input_tokens'] = response.usage_metadata.prompt_token_count
             meta_data['output_tokens'] = response.usage_metadata.candidates_token_count
 
-        logger_service.log_to_firestore('INFO', 'API call successful', prompt, user_id, workspace_id, response_content=generated_text, **meta_data)
+        # ★削除: API成功直後の生テキストログを削除
+        # ここでログを出さないことで、app.pyでのStorage保存後のログのみが残ります
+        
         return generated_text, meta_data
 
     except DeadlineExceeded:
