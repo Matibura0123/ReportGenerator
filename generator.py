@@ -1,328 +1,189 @@
 import ai_service
-import logger_service # ★Firebaseロガー
+import logger_service
 from firebase_admin import firestore
-from typing import Optional, Tuple, Dict, Any
-import os
+from typing import Optional, Tuple
 import base64
 from flask import Flask, render_template, request, jsonify
-from threading import Lock
-import requests # ★追加: StorageのURLからテキストを取得するため
+import requests # pip install requests が必要
 
-# --- アプリケーション設定 ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'a_very_secret_and_fixed_key_for_dev_only_2'
+app.config['SECRET_KEY'] = 'dev_key_fixed_for_demo'
 
-# --- データベース関連関数 ---
-
-def get_report_from_db(user_id: str, workspace_id: str) -> Optional[str]:
+# --- DB関数 ---
+def get_report_from_db(user_id: str, workspace_id: str) -> Tuple[Optional[str], Optional[str]]:
     """
-    【修正版】app_logsから最新のレポートを取得します。
-    StorageのURLがある場合はそこから本文をダウンロードし、
-    なければFirestoreのresponse_summary(テキスト)を返します。
+    app_logsから最新レポートとモードを取得。Storage URLがあればDLする。
+    戻り値: (content, mode)
     """
     if not logger_service.is_logger_enabled:
-        print("[DB] Logger disabled, cannot get report from logs.")
-        return None
+        return None, None
         
     try:
         db = logger_service.db
-        
-        # 最新のログを取得（response_summaryがあるもの）
+        # timestampの降順で最新1件を取得
         query = db.collection('app_logs') \
                   .where('user_id', '==', user_id) \
                   .where('workspace_id', '==', workspace_id) \
                   .where('response_summary', '!=', None) \
                   .order_by('timestamp', direction=firestore.Query.DESCENDING) \
                   .limit(1)
-                  
         results = query.stream()
         first_doc = next(results, None)
         
         if first_doc:
             data = first_doc.to_dict()
+            log_mode = data.get('mode')
             
-            # ★ パターンA: StorageのURLが記録されている場合 (推奨)
+            # Storage URLがある場合
             if 'report_url' in data and data['report_url']:
-                report_url = data['report_url']
-                print(f"[DB GET] Found Storage URL. Downloading content...")
                 try:
-                    # URLからテキストをダウンロード
-                    response = requests.get(report_url)
-                    response.raise_for_status() # エラーなら例外発生
-                    content = response.text
-                    print(f"[DB GET] Download successful. Length: {len(content)}")
-                    return content
+                    resp = requests.get(data['report_url'])
+                    resp.raise_for_status()
+                    return resp.text, log_mode
                 except Exception as e:
-                    print(f"[エラー] Storageからのダウンロードに失敗: {e}")
-                    # ダウンロード失敗時は、Firestore内のサマリーで妥協するか、Noneを返す
-                    return data.get('response_summary')
-
-            # ★ パターンB: URLがなく、直接テキストが入っている場合 (旧仕様/短いテキスト)
+                    print(f"[Error] Storage DL failed: {e}")
+                    return data.get('response_summary'), log_mode
             else:
-                content = data.get('response_summary')
-                print(f"[DB GET] Found text log. Content length: {len(content if content else 0)}")
-                return content
-        else:
-            print(f"[DB GET] No log found for key='{user_id}:{workspace_id}'.")
-            return None
-            
+                return data.get('response_summary'), log_mode
+        return None, None
     except Exception as e:
-        print(f"[エラー] Firestoreからのログ取得中にエラー: {e}")
-        return None
+        print(f"[Error] DB Get failed: {e}")
+        return None, None
 
-def save_report_to_db(user_id: str, workspace_id: str, content: str, prompt: str = "N/A", mode: str = "N/A") -> None:
-    """
-    【修正版】
-    1. コンテンツをCloud Storageに保存
-    2. 取得したURLをFirestoreのログに記録
-    """
-    if not logger_service.is_logger_enabled:
-        print("[DB] Logger disabled, cannot save report to logs.")
-        return
-
+def save_report_to_db(user_id: str, workspace_id: str, content: str, prompt: str, mode: str) -> None:
+    if not logger_service.is_logger_enabled: return
     try:
         report_url = None
-        
-        # ★ 1. Cloud Storageに保存を試みる
-        if content and len(content) > 0:
+        # 空文字でなければStorageへ保存
+        if content and len(content) > 0 and content != "　":
             report_url = logger_service.save_report_to_storage(content, user_id, workspace_id)
         
-        # ★ 2. ログ出力 (Storage URLを含める)
         logger_service.log_to_firestore(
             log_level='INFO',
-            message='レポート保存/更新 (Storage)',
+            message='レポート保存/更新',
             user_prompt=prompt,
-            
-            # response_contentには生データを渡さない (Storage URLがあれば不要、なければ要約される)
-            response_content=content if not report_url else None, 
-            
-            # URLがある場合はresponse_summaryの代わりにURLを入れておく(可読性のため)
+            response_content=content if not report_url else None,
             response_summary=report_url if report_url else None,
-            
             user_id=user_id,
             workspace_id=workspace_id,
             mode=mode,
-            
-            # ★ カスタムフィールドとしてURLを保存
-            report_url=report_url 
+            report_url=report_url
         )
-        
-        location = "Storage" if report_url else "Firestore(Truncated)"
-        print(f"[DB SAVE] Report saved to {location}. Length: {len(content)}")
-
     except Exception as e:
-        print(f"[エラー] DB保存プロセス中にエラー: {e}")
+        print(f"[Error] DB Save failed: {e}")
 
-
-def delete_report_from_db(user_id: str, workspace_id: str) -> bool:
-    """
-    ログベースのため物理削除はしない。
-    """
-    print(f"[DB DELETE] Log-based system. Deletion skipped for key='{user_id}:{workspace_id}'.")
+def delete_report_from_db(user_id, workspace_id):
     return True
 
-
-# --- ユーティリティ関数 (変更なし) ---
-
-def get_base64_image_data_from_upload(file) -> Optional[str]:
-    if not file or not file.filename:
-        return None
+# --- Utils ---
+def get_uploaded_file_bytes(file):
+    if not file or not file.filename: return None
     try:
-        image_data = file.read()
-        file.seek(0)
-        return base64.b64encode(image_data).decode("utf-8")
-    except Exception as e:
-        print(f"[エラー] 画像ファイルの読み込み中にエラー: {e}")
-        return None
+        f_bytes = file.read(); file.seek(0)
+        return f_bytes, file.filename
+    except: return None
 
-def get_uploaded_file_bytes(file) -> Optional[Tuple[bytes, str]]:
-    if not file or not file.filename:
-        return None
+def get_base64_image_data_from_upload(file):
+    if not file or not file.filename: return None
     try:
-        file_bytes = file.read()
-        file_name = file.filename
-        file.seek(0)
-        return file_bytes, file_name
-    except Exception as e:
-        print(f"[エラー] ファイルの読み込み中にエラー: {e}")
-        return None
+        img_data = file.read(); file.seek(0)
+        return base64.b64encode(img_data).decode("utf-8")
+    except: return None
 
-
-# --- Flask ルート定義 ---
-
+# --- Routes ---
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    # テスト用デフォルトID (GET時など)
-    default_user_id = 'tanii'
-    default_workspace_id = 'taniiPC'
-
-    # --- GETリクエスト ---
+    user_id = 'tanii' 
+    # GET時のデフォルトIDはPOSTでは使われないため、リセットには影響しません
+    
     if request.method == 'GET':
-        api_key_status = ai_service.get_api_key_status()
-        if api_key_status == 'missing':
+        if ai_service.get_api_key_status() == 'missing':
             return render_template('index.html', error_message="APIキー未設定")
         
-        # ページリセット時は空の状態を記録
-        save_report_to_db(
-            user_id=default_user_id, 
-            workspace_id=default_workspace_id, 
-            content="　",
-            prompt="GET(PageReset)",
-            mode='general_report'
-        )
+        # ★修正: GET時はDB操作をせず、単にHTMLを返すだけにする
+        # JS側で新しいIDが生成されるため、サーバー側でのリセットログ書き込みは不要
+        return render_template('index.html', report_content=None, model_name=ai_service.get_model_name())
 
-        return render_template(
-            'index.html',
-            report_content=None,
-            error_message=None,
-            model_name=ai_service.get_model_name()
-        )
-    
-    # --- POSTリクエスト ---
     if request.method == 'POST':
         try:
-            # クライアントからIDを取得 (なければデフォルト)
-            workspace_id = request.form.get('workspace_id', default_workspace_id)
-            user_id = default_user_id # ユーザーIDは今回は固定
+            # JSから送られてきた動的なIDを使用
+            ws_id = request.form.get('workspace_id', 'default_error_ws')
+            current_mode = request.form.get('mode')
             
-            print(f"Processing for Workspace ID: '{workspace_id}'")
-
-            # ★ DB(Storage)から現状を取得
-            current_report_content = get_report_from_db(user_id, workspace_id)
+            # DBから直前の状態を取得
+            fetched_content, last_mode = get_report_from_db(user_id, ws_id)
             
-            # アクション決定
-            if current_report_content is None or current_report_content == "　":
-                action = 'generate'
+            # ★ モード変更検知ロジック ★
+            # 1. 履歴がない -> 新規
+            # 2. 前回のモードと今回のモードが違う -> コンテキストリセット(新規)
+            if not fetched_content or fetched_content == "　":
+                current_content = None
+            elif last_mode != current_mode:
+                print(f"[Info] Mode changed ({last_mode}->{current_mode}). Resetting context.")
+                current_content = None # これにより ai_service に previous_content=None が渡る
             else:
-                action = 'refine'
-            
-            # 変数初期化
-            error_message = None
-            new_report_content = current_report_content
-            meta_data = None 
-            
-            initial_prompt = request.form.get('initial_prompt')
-            image_file = request.files.get('image_file') 
-            book_file = request.files.get('book_file') 
-            mode = request.form.get('mode')
-            is_book_report_mode = (mode == 'book_report')
+                current_content = fetched_content
 
-            # --- 生成/精製ロジック ---
+            action = 'generate' if current_content is None else 'refine'
+            
+            prompt = request.form.get('initial_prompt')
+            img_file = request.files.get('image_file')
+            book_file = request.files.get('book_file')
+            
+            new_content = current_content
+            error_msg = None
+            meta = None
+
             if action == 'generate':
-                # 入力チェック
-                has_prompt = bool(initial_prompt)
-                has_book = bool(is_book_report_mode and book_file and book_file.filename)
-                has_image = bool(not is_book_report_mode and image_file and image_file.filename)
-
-                if not (has_prompt or has_book or has_image):
-                    error_message = "テーマ、またはファイルを入力/アップロードしてください。"
+                has_input = prompt or (img_file and img_file.filename) or (book_file and book_file.filename)
+                if not has_input:
+                    error_msg = "入力が必要です。"
                 else:
-                    # ファイル処理
-                    image_data_base64 = None
-                    uploaded_file_data = None
+                    img_b64 = get_base64_image_data_from_upload(img_file)
+                    book_data = get_uploaded_file_bytes(book_file)
                     
-                    if has_book:
-                        uploaded_file_data = get_uploaded_file_bytes(book_file)
-                        if not uploaded_file_data: error_message = "書籍ファイル読込失敗"
-                    elif has_image:
-                        image_data_base64 = get_base64_image_data_from_upload(image_file)
-                        if not image_data_base64: error_message = "画像ファイル読込失敗"
-                    
-                    if not error_message:
-                        print(f">>> {mode}を生成中...")
-                        # ★修正箇所: user_id と workspace_id を引数に追加
-                        report_text, meta_data = ai_service.process_report_request(
-                            initial_prompt=initial_prompt,
-                            user_id=user_id,             # 追加
-                            workspace_id=workspace_id,   # 追加
-                            previous_content=None,
-                            image_data_base64=image_data_base64,
-                            uploaded_file_data=uploaded_file_data,
-                            mode=mode
-                        )
-                        if report_text.startswith("エラー:"):
-                            error_message = report_text.replace("エラー:", "").strip()
-                        else:
-                            new_report_content = report_text
-
-            elif action == 'refine':
-                if not initial_prompt:
-                    error_message = "ブラッシュアップの指示を入力してください。"
-                else:
-                    print(f">>> {mode}を精製中...")
-                    # ★修正箇所: user_id と workspace_id を引数に追加
-                    refined_text, meta_data = ai_service.process_report_request(
-                        initial_prompt=initial_prompt,
-                        user_id=user_id,             # 追加
-                        workspace_id=workspace_id,   # 追加
-                        previous_content=current_report_content, 
-                        mode=mode
+                    # generateなので previous_content=None で呼ぶ
+                    text, meta = ai_service.process_report_request(
+                        prompt, user_id, ws_id,
+                        mode=current_mode, 
+                        image_data_base64=img_b64, 
+                        uploaded_file_data=book_data,
+                        previous_content=None 
                     )
-                    if refined_text.startswith("エラー:"):
-                        error_message = refined_text.replace("エラー:", "").strip()
-                    else:
-                        new_report_content = refined_text
+                    if text.startswith("エラー:"): error_msg = text
+                    else: new_content = text
+            
+            elif action == 'refine':
+                if not prompt: error_msg = "指示が必要です。"
+                else:
+                    text, meta = ai_service.process_report_request(
+                        prompt, user_id, ws_id,
+                        mode=current_mode,
+                        previous_content=current_content # 履歴を引き継ぐ
+                    )
+                    if text.startswith("エラー:"): error_msg = text
+                    else: new_content = text
 
-            # --- 結果の保存 ---
-            if new_report_content and not error_message:
-                # ★ Storageへの保存を含む新しい関数を呼ぶ
-                save_report_to_db(
-                    user_id=user_id,
-                    workspace_id=workspace_id,
-                    content=new_report_content,
-                    prompt=initial_prompt,
-                    mode=mode
-                )
-            elif error_message:
-                logger_service.log_to_firestore(
-                    log_level='ERROR',
-                    message=f"レポート {action} 失敗",
-                    user_prompt=initial_prompt,
-                    error_detail=error_message,
-                    user_id=user_id,
-                    workspace_id=workspace_id,
-                    mode=mode
-                )
+            if new_content and not error_msg:
+                save_report_to_db(user_id, ws_id, new_content, prompt, current_mode)
+            elif error_msg:
+                logger_service.log_to_firestore('ERROR', '処理失敗', prompt, user_id, ws_id, error_detail=error_msg)
 
-            # レスポンス
-            response_data = {
-                'status': 'success' if not error_message else 'error',
-                'report_content': new_report_content,
-                'message': error_message or ('処理が完了しました。'),
-                'meta_data': meta_data,
+            return jsonify({
+                'status': 'success' if not error_msg else 'error',
+                'report_content': new_content,
+                'message': error_msg or "完了",
                 'action_type': action
-            }
-            status_code = 200 if response_data['status'] == 'success' else 400
-            return jsonify(response_data), status_code
+            })
 
         except Exception as e:
-            print(f"[Critical Error] {e}")
-            logger_service.log_to_firestore(
-                log_level='CRITICAL',
-                message="POST処理中に例外",
-                user_prompt=request.form.get('initial_prompt', 'N/A'),
-                error_detail=str(e),
-                user_id=user_id,
-                workspace_id=workspace_id
-            )
-            return jsonify({'status': 'error', 'message': 'サーバー内部エラー'}), 500
-
+            print(f"[Critical] {e}")
+            logger_service.log_to_firestore('CRITICAL', '例外発生', request.form.get('initial_prompt'), user_id, ws_id, error_detail=str(e))
+            return jsonify({'status': 'error', 'message': 'サーバーエラー'}), 500
 
 @app.route('/clear_session', methods=['POST'])
 def clear_session():
-    try:
-        # JSONボディからIDを取得
-        data = request.get_json() or {}
-        user_id = 'tanii'
-        workspace_id = data.get('workspace_id', 'taniiPC')
-
-        if delete_report_from_db(user_id, workspace_id):
-            return jsonify({'status': 'success', 'message': 'セッションクリア'}), 200
-        else:
-            return jsonify({'status': 'success', 'message': '対象なし'}), 200
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
+    return jsonify({'status': 'success'}), 200
 
 if __name__ == '__main__':
     logger_service.initialize_firebase_logger()
