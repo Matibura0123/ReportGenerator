@@ -10,14 +10,10 @@ from PIL import Image
 from typing import Optional, Tuple, Dict, Any, List
 from google.api_core.exceptions import DeadlineExceeded
 
-# テスト用:ここを変える
-user_id='trial'
-workspace_id=''
-
 # --- 設定 ---
 # ---------------------------------------------------------------
 # ↓↓↓ここにAPIキーを直接記述してください↓↓↓
-HARDCODED_API_KEY = "AIzaSyDcFSFyVueKAovHubSFU74K0cIVKhxegt0"
+HARDCODED_API_KEY = "AIzaSyD8EdjL2N2g7j1e42ebc-MdAzOZtjrj5VE"
 # ---------------------------------------------------------------
 
 # 環境変数が設定されていればそれを使い、なければハードコードされたキーを使用
@@ -41,6 +37,9 @@ except Exception as e:
 
 def process_report_request(
     initial_prompt: str,
+    # ★追加: 呼び出し元からIDを受け取る
+    user_id: str,
+    workspace_id: str,
     mode="general_report",
     previous_content: Optional[str] = None,
     image_data_base64: Optional[str] = None,
@@ -73,7 +72,8 @@ def process_report_request(
             contents.append(img)
         except Exception as e:
             error_msg = f"画像のBase64デコードまたは処理に失敗しました: {e}"
-            logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, error_detail=str(e), **meta_data)
+            # ★修正: 引数のIDを使用
+            logger_service.log_to_firestore('ERROR', error_msg, prompt, user_id, workspace_id, error_detail=str(e), **meta_data)
             return f"エラー: {error_msg}", meta_data
 
     # --- ファイル処理 ---
@@ -84,14 +84,14 @@ def process_report_request(
             full_text_content += f"--- 参照元ファイル: {file_name} ---\n{file_text}\n--- 参照元ファイル 終了 ---\n\n"
         except UnicodeDecodeError as e:
             error_msg = f"ファイルのデコードに失敗しました: {e}"
-            logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, error_detail=str(e), **meta_data)
+            # ★修正: 引数のIDを使用
+            logger_service.log_to_firestore('ERROR', error_msg, prompt, user_id, workspace_id, error_detail=str(e), **meta_data)
             return f"エラー: {error_msg}", meta_data
 
     # --- システム命令構築 ---
     system_instruction_text = ""
     user_query = ""
-    print(mode)
-    print(previous_content)
+    
     if mode == "general_report":
         if previous_content:
             system_instruction_text = (
@@ -110,7 +110,6 @@ def process_report_request(
             )
             user_query = prompt
     elif mode=="book_report":
-        # ... (中略: book_reportモードのロジックは前回と同じ)
         if previous_content:
             system_instruction_text = (
                 "あなたはプロの編集者兼読書感想文作成者です。提供された読書感想文の内容（PREVIOUS REPORT）を、"
@@ -142,8 +141,8 @@ def process_report_request(
         'INFO',
         'API call initiated',
         prompt,
-        user_id,
-        workspace_id,
+        user_id,      # ★修正: 引数のIDを使用
+        workspace_id, # ★修正: 引数のIDを使用
         previous_content_exists=bool(previous_content),
         files_attached=bool(image_data_base64)
     )
@@ -168,8 +167,8 @@ def process_report_request(
             'INFO',
             'API call successful',
             prompt,
-            user_id,
-            workspace_id,
+            user_id,      # ★修正: 引数のIDを使用
+            workspace_id, # ★修正: 引数のIDを使用
             response_content=generated_text,
             **meta_data
         )
@@ -177,17 +176,20 @@ def process_report_request(
 
     except DeadlineExceeded:
         error_msg = "エラー: AIサービスからの応答がタイムアウトしました。"
-        logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, **meta_data)
+        # ★修正: 引数のIDを使用
+        logger_service.log_to_firestore('ERROR', error_msg, prompt, user_id, workspace_id, **meta_data)
         return error_msg, meta_data
 
     except APIError as e:
         error_msg = f"Gemini API呼び出し中にエラーが発生しました: {e}"
-        logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, error_detail=str(e), **meta_data)
+        # ★修正: 引数のIDを使用
+        logger_service.log_to_firestore('ERROR', error_msg, prompt, user_id, workspace_id, error_detail=str(e), **meta_data)
         return f"エラー: {error_msg}", meta_data
 
     except Exception as e:
         error_msg = f"予期せぬエラーが発生しました: {e}"
-        logger_service.log_to_firestore('ERROR', error_msg, prompt,user_id,workspace_id, error_detail=str(e), **meta_data)
+        # ★修正: 引数のIDを使用
+        logger_service.log_to_firestore('ERROR', error_msg, prompt, user_id, workspace_id, error_detail=str(e), **meta_data)
         return f"エラー: {error_msg}", meta_data
 
 
