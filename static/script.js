@@ -1,5 +1,3 @@
-// script.js の完全版 (ファイル添付リスト機能付き)
-
 // DOM要素の取得
 const chatHistory = document.getElementById('chat-history');
 const userInput = document.getElementById('user-input');
@@ -10,16 +8,39 @@ const downloadButton = document.getElementById('download-button');
 const uploadButton = document.getElementById('upload-button');
 const fileInput = document.getElementById('file-input');
 const attachedFilesContainer = document.getElementById('attached-files'); // ファイルチップコンテナ
+const chatArea = document.getElementById('chat-area'); // モード取得用
+
+// DataTransferオブジェクトを使用して、fileInput.filesを管理する
+let filesToUpload = new DataTransfer(); 
+
+// --- ユーティリティ関数: ワークスペースIDの管理 ---
+
+/**
+ * session/deviceごとに一意なワークスペースIDを取得/生成する。
+ * ブラウザセッションが続く限り、同じIDを使用する。
+ * @returns {string} ワークスペースID
+ */
+function getWorkspaceId() {
+    let workspaceId = sessionStorage.getItem('workspace_id');
+    if (!workspaceId) {
+        // IDが存在しない場合、新しい一意のIDを生成
+        workspaceId = crypto.randomUUID(); 
+        sessionStorage.setItem('workspace_id', workspaceId);
+    }
+    return workspaceId;
+}
 
 // ページロード時に既存のレポート内容に基づいてダウンロードボタンを初期化
-if (reportDisplay && reportDisplay.innerText.trim() !== '' && reportDisplay.innerText.trim() !== 'ここにレポートの内容が表示されます') {
-    downloadButton.disabled = false;
-    updateCharCount(reportDisplay.innerText.length);
+if (reportDisplay) {
+    const initialContent = reportDisplay.innerText.trim();
+    const isInitialPlaceholder = initialContent === '' || initialContent === 'ここにレポートの内容が表示されます';
+
+    downloadButton.disabled = isInitialPlaceholder;
+    updateCharCount(isInitialPlaceholder ? 0 : initialContent.length);
 } else {
     downloadButton.disabled = true;
     updateCharCount(0);
 }
-
 
 // --- イベントリスナーの設定 ---
 sendButton.addEventListener('click', handleSendMessage);
@@ -33,116 +54,162 @@ userInput.addEventListener('keypress', function(e) {
 });
 
 downloadButton.addEventListener('click', handleDownloadReport);
-uploadButton.addEventListener('click', () => { fileInput.click(); }); // ファイルボタン発火
-fileInput.addEventListener('change', handleFileSelection);           // ファイル選択時の処理
 
-// --- 関数定義: ファイル関連 ---
+// ★ファイルボタン発火機能（ご指摘の通り、この機能は維持しています）
+uploadButton.addEventListener('click', () => { 
+    fileInput.click(); 
+}); 
+
+// fileInputの変更イベントは、一旦選択内容をfilesToUploadに統合するために使用する
+fileInput.addEventListener('change', handleFileSelection); 
+
+// モード切り替えイベントの監視
+document.querySelectorAll('input[name="creation_mode"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+        handleModeChange(e.target.value);
+    });
+});
+
+// 初期モード設定
+// ページロード時に checked のモードを適用する
+const initialCheckedMode = document.querySelector('input[name="creation_mode"]:checked');
+if (initialCheckedMode) {
+    handleModeChange(initialCheckedMode.value);
+}
+
+// --- 関数定義: モード/ファイル関連 ---
+
+/**
+ * 作成モードが変更されたときの処理
+ * @param {string} mode 'general_report' または 'book_report'
+ */
+function handleModeChange(mode) {
+    // chatArea (またはメインコンテナ) に現在のモードを設定
+    if (chatArea) chatArea.setAttribute('data-mode', mode);
+    
+    // 既存のファイル選択状態をクリア（モードが異なるとファイルタイプが異なるため）
+    filesToUpload = new DataTransfer();
+    fileInput.value = '';
+    renderAttachedFiles();
+    
+    // UIのヒントとfileInputのaccept属性を更新
+    const fileHint = document.getElementById('file-hint');
+    const reportFilename = document.getElementById('report-filename');
+    const uploadText = document.getElementById('upload-text');
+    
+    // 両モードで単一ファイル選択に統一
+    fileInput.removeAttribute('multiple'); 
+
+    if (mode === 'book_report') {
+        fileInput.accept = '.pdf, .epub, .txt';
+        if (fileHint) fileHint.textContent = '(PDF, EPUB, TXTファイルを1つ)';
+        if (reportFilename) reportFilename.textContent = '感想文.md';
+        if (uploadText) uploadText.textContent = '書籍ファイル添付';
+    } else {
+        // general_report
+        fileInput.accept = 'image/*';
+        // ヒントも単一ファイルに修正
+        if (fileHint) fileHint.textContent = '(画像ファイルを1つ)'; 
+        if (reportFilename) reportFilename.textContent = 'レポート.md';
+        if (uploadText) uploadText.textContent = '画像ファイル添付';
+    }
+}
+
+
+// ファイル選択時の処理 (filesToUploadに追加/上書き)
+function handleFileSelection() {
+    const newFiles = fileInput.files;
+
+    // 両モードで最初の1ファイルのみを採用するロジックに統一
+    // バックエンドが1ファイルのみを受け付けるため、UIとロジックを統一
+    filesToUpload = new DataTransfer();
+    if (newFiles.length > 0) {
+        // 最初の1つのみを採用
+        filesToUpload.items.add(newFiles[0]); 
+    }
+    
+    // fileInput自体のFilesリストは操作しないため、空にする（DataTransferで管理）
+    fileInput.value = ''; 
+    renderAttachedFiles();
+}
+
+
+// ファイルをリストから削除する関数
+function removeFile(indexToRemove) {
+    const newFiles = new DataTransfer();
+    Array.from(filesToUpload.files).forEach((file, i) => {
+        if (i !== indexToRemove) {
+            newFiles.items.add(file);
+        }
+    });
+    filesToUpload = newFiles; // 更新
+    renderAttachedFiles(); // UIを再描画
+}
+
 
 // ファイルが選択されたとき、または削除されたときにUIを更新する関数
 function renderAttachedFiles() {
-    const files = fileInput.files;
+    const files = filesToUpload.files;
     
     // コンテナをクリア
+    if (!attachedFilesContainer) return;
+
     attachedFilesContainer.innerHTML = '';
 
     if (files.length > 0) {
-        // ファイルがある場合、コンテナを表示
         attachedFilesContainer.style.display = 'flex';
 
-        // 各ファイルに対してチップを作成
         Array.from(files).forEach((file, index) => {
             const chip = document.createElement('div');
             chip.className = 'file-chip';
             chip.setAttribute('data-index', index); 
 
-            // ファイル名
             const nameSpan = document.createElement('span');
             nameSpan.className = 'file-chip-name';
             nameSpan.textContent = file.name;
             chip.appendChild(nameSpan);
 
-            // 削除ボタン
             const removeButton = document.createElement('button');
             removeButton.className = 'remove-file-button';
-            removeButton.innerHTML = '&times;'; // '×'記号
-            
-            // 削除ボタンのクリックイベント
-            removeButton.addEventListener('click', () => removeFile(index));
+            removeButton.innerHTML = '&times;';
+            // indexをキャプチャするためにクロージャを使用
+            removeButton.addEventListener('click', (function(i) {
+                return function(e) {
+                    e.stopPropagation(); // ボタンクリックが親要素に伝播しないように
+                    removeFile(i);
+                };
+            })(index));
             
             chip.appendChild(removeButton);
             attachedFilesContainer.appendChild(chip);
         });
         
-        // チャットに通知（初回生成時のみ）
-        if (getReportContent() === '') {
-            const fileNames = Array.from(files).map(f => f.name).join(', ');
-            displayMessage(`ファイルを添付しました: ${fileNames}`, 'system'); // systemメッセージとして表示
-        }
-        
     } else {
-        // ファイルがない場合、コンテナを非表示
         attachedFilesContainer.style.display = 'none';
     }
-}
-
-// ファイル選択時の処理
-function handleFileSelection() {
-    // 新しい選択内容に基づいてUIを再描画
-    renderAttachedFiles();
-}
-
-// ファイルをリストから削除する関数
-function removeFile(indexToRemove) {
-    const files = Array.from(fileInput.files);
-    
-    // 指定されたインデックスのファイルを削除
-    files.splice(indexToRemove, 1);
-    
-    // DataTransferオブジェクトを使用して、fileInput.filesを更新
-    const dataTransfer = new DataTransfer();
-    files.forEach(file => dataTransfer.items.add(file));
-    fileInput.files = dataTransfer.files;
-
-    // UIを再描画
-    renderAttachedFiles();
 }
 
 
 // --- 関数定義: チャット・レポート機能 ---
 
 function getReportContent() {
-    if (!reportDisplay) {
-        return '';
-    }
-    const content = reportDisplay.innerText.trim();
-    
-    // ★★★ プレースホルダーテキストと空文字列を明示的にチェック ★★★
-    const placeholderText = 'ここにレポートの内容が表示されます'; 
-    
-    if (content === placeholderText || content === '') {
-        return '';
-    }
-    return content;
+    return reportDisplay ? reportDisplay.innerText.trim() : '';
 }
 
-// ★ 修正箇所: displayReport
 function displayReport(content) {
     if (reportDisplay) {
-        // null/undefinedの場合は空文字列に変換し、安全に処理する
         const safeContent = content || '';
         
-        // TODO: ここでMarkdownレンダリングを実装すると見栄えが向上
+        // TODO: ここでMarkdownレンダリングを実装すると見栄えが向上 (例: marked.jsなどを使用)
         reportDisplay.innerText = safeContent;
         reportDisplay.scrollTop = 0; 
         
         // 空文字列の場合はダウンロードボタンを無効化
-        downloadButton.disabled = (safeContent === ''); 
+        downloadButton.disabled = (safeContent === '' || safeContent === '　'); 
         
-        // safeContentに対して.lengthを呼び出す
         updateCharCount(safeContent.length);
     }
 }
-// ★ 修正箇所ここまで
 
 function updateCharCount(count) {
     if (charCount) {
@@ -151,14 +218,21 @@ function updateCharCount(count) {
 }
 
 function displayMessage(message, sender) {
+    if (!chatHistory) return null;
+
     const messageDiv = document.createElement('div');
     messageDiv.classList.add(`${sender}-message`);
     
     let displayContent = message;
     
-    // エラーメッセージの装飾を解除
-    if (displayContent.startsWith("エラー:")) {
-        displayContent = displayContent.substring(4);
+    // AIからの応答をチャット履歴用に装飾
+    if (sender === 'ai') {
+        // エラーメッセージの装飾を解除
+        displayContent = displayContent.replace(/^(エラー:|AI:)\s*/, '').trim();
+        // 応答テキストが空でなければ 'AI: ' プレフィックスを付ける
+        if (displayContent !== '') {
+            displayContent = `AI: ${displayContent}`;
+        }
     }
     
     const formattedMessage = displayContent.replace(/\n/g, '<br>');
@@ -170,23 +244,27 @@ function displayMessage(message, sender) {
 }
 
 function scrollToBottom() {
-    chatHistory.scrollTop = chatHistory.scrollHeight;
+    if (chatHistory) {
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
 }
 
 function handleDownloadReport() {
     const reportContent = getReportContent();
-    if (reportContent === '' || reportContent === 'ここにレポートの内容が表示されます') {
-        // alertの代わりにカスタムメッセージボックスを使用することが推奨されますが、ここでは簡略化
+    if (reportContent === '' || reportContent === 'ここにレポートの内容が表示されます' || reportContent === '　') {
         console.error('ダウンロードできるレポートがありません。');
         return;
     }
+
+    const currentMode = chatArea ? chatArea.getAttribute('data-mode') : 'general_report';
+    const filename = currentMode === 'book_report' ? '感想文.md' : 'レポート.md';
 
     const blob = new Blob([reportContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'レポート.md'; // Markdown形式としてダウンロード
+    a.download = filename; 
     
     document.body.appendChild(a);
     a.click();
@@ -200,14 +278,33 @@ function handleDownloadReport() {
 
 async function handleSendMessage() {
     const message = userInput.value.trim();
-    const attachedFiles = fileInput.files;
+    const files = filesToUpload.files;
+    const currentMode = chatArea ? chatArea.getAttribute('data-mode') : 'general_report';
+    const currentContent = getReportContent();
+    
+    // サーバーが空のコンテンツ ('　') を新規作成の判定に使用するため、チェックを調整
+    const isNewContent = (currentContent === '' || currentContent === '　' || currentContent === 'ここにレポートの内容が表示されます');
 
-    if (message === '' && attachedFiles.length === 0) {
+
+    if (message === '' && files.length === 0 && isNewContent) {
         return;
     }
+    
+    // 初回生成時の必須チェック
+    if (isNewContent) {
+        if (currentMode === 'book_report' && (files.length === 0 && message === '')) {
+             displayMessage("AI: 読書感想文を作成するには、書籍ファイルを添付し、必要に応じてプロンプトを入力してください。", 'ai');
+             return;
+        }
+        if (currentMode === 'general_report' && message === '' && files.length === 0) {
+            displayMessage("AI: プロンプト（質問・指示）を入力するか、ファイルを添付してください。", 'ai');
+            return;
+        }
+    }
+
 
     // 1. ユーザーメッセージを画面に表示
-    const userActionType = getReportContent() === '' ? 'generate' : 'refine';
+    const userActionType = isNewContent ? 'generate' : 'refine';
     displayMessage(message, 'user');
 
     // 2. 入力欄をクリア
@@ -217,54 +314,62 @@ async function handleSendMessage() {
     sendButton.disabled = true;
 
     // 4. AIからの応答を待つローディングメッセージを表示
-    const actionText = userActionType === 'generate' ? 'レポート作成の準備中です' : 'レポート精製の準備中です';
-    const loadingMessage = displayMessage(`...AIが${actionText}...`, 'ai');
+    const typeText = currentMode === 'book_report' ? '感想文' : 'レポート';
+    const actionText = userActionType === 'generate' ? `${typeText}作成の準備中です` : `${typeText}精製の準備中です`;
+    const loadingMessage = displayMessage(`AI: ...AIが${actionText}...`, 'ai');
     
     // 5. FormDataの準備
     const formData = new FormData();
-    formData.append('action', userActionType); // 初回生成 or 精製
-    formData.append('initial_prompt', message); // 両方のケースでプロンプトとして利用
+    formData.append('initial_prompt', message); 
+    formData.append('mode', currentMode); 
     
-    // 初回生成の場合のみファイルを添付
-    if (userActionType === 'generate' && attachedFiles.length > 0) {
-        // 'image_file' は Flask の request.files.get('image_file') に対応
-        // 複数ファイルに対応する場合、バックエンドのロジックを修正する必要があります。ここでは最初のファイルのみを送信。
-        formData.append('image_file', attachedFiles[0]); 
+    // ★【重要】ワークスペースIDを追加
+    formData.append('workspace_id', getWorkspaceId());
+    
+    // ファイルを添付 (generator.pyに合わせてfiles[0]のみを送信)
+    if (files.length > 0) {
+        if (currentMode === 'book_report') {
+            // 書籍ファイル: 'book_file'として送信 (感想文モードは1ファイルのみ)
+            formData.append('book_file', files[0]); 
+        } else {
+            // 画像ファイル: 'image_file'として送信 (一般レポートモードは1ファイルのみ)
+            formData.append('image_file', files[0]); 
+        }
     }
     
-    // ★★★ タイムアウト処理の追記開始 ★★★
-    const timeoutDuration = 60000; // 30秒
+    // ★★★ タイムアウト処理 ★★★
+    const timeoutDuration = 60000; // 60秒
     const controller = new AbortController();
     const signal = controller.signal;
     
-    // 指定時間後にリクエストを中止するためのタイマーを設定
     const timeoutId = setTimeout(() => {
-        controller.abort(); // リクエストを中止
+        controller.abort(); 
     }, timeoutDuration);
-    // ★★★ タイムアウト処理の追記終了 ★★★
+    // ★★★ タイムアウト処理終了 ★★★
 
     try {
         const response = await fetch('/', {
             method: 'POST',
             body: formData,
-            // ★ AbortControllerのsignalをfetchオプションに追加 ★
             signal: signal ,
             credentials: 'include'
         });
         
-        // ★ 成功またはエラー処理前に、必ずタイマーを解除 ★
         clearTimeout(timeoutId);
 
         // 応答がJSONであることを確認
-        if (response.status === 204 || response.headers.get('content-length') === '0') {
-            // コンテンツがない場合はエラーとして扱う
-            throw new Error('サーバーからの応答データがありません。');
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            const errorText = await response.text();
+            throw new Error(`サーバーから予期しない応答形式が返されました (Content-Type: ${contentType}). HTMLが返されている可能性があります。`);
         }
         
         const responseJson = await response.json();
 
         // 6. ローディングメッセージを削除
-        chatHistory.removeChild(loadingMessage);
+        if (loadingMessage && chatHistory.contains(loadingMessage)) {
+            chatHistory.removeChild(loadingMessage);
+        }
         
         if (response.ok && responseJson.status === 'success') {
             const newContent = responseJson.report_content;
@@ -274,35 +379,37 @@ async function handleSendMessage() {
             displayReport(newContent);
             
             // チャット履歴にAIの応答を表示
-            const responseAction = responseJson.action_type === 'generate' ? 'レポートを生成しました' : 'レポートを精製しました';
-            displayMessage(`AI: ${responseAction}。${successMessage}`, 'ai');
+            const responseAction = responseJson.action_type === 'generate' ? 'を生成しました' : 'を精製しました';
+            displayMessage(`${typeText}${responseAction}。${successMessage}`, 'ai');
             
         } else {
             // エラー時の処理 
             const errorMessage = responseJson.message || '不明なエラーが発生しました。';
-            displayMessage(`AI: ${errorMessage}`, 'ai');
+            displayMessage(`エラーが発生しました: ${errorMessage}`, 'ai');
             
             // レポート内容がエラーでクリアされた場合に対応
             if (responseJson.report_content === null) {
-                displayReport(''); // 明示的に空文字列を渡し、表示をクリア
+                displayReport('　'); // サーバー側のロジックに合わせて '　' を使用
             }
         }
     
     } catch (error) {
         console.error('通信エラー:', error);
         
-        // ★ エラーが発生した場合もタイマーを解除し、ローディングメッセージを削除 ★
         clearTimeout(timeoutId); 
-        if (chatHistory.contains(loadingMessage)) {
+        if (loadingMessage && chatHistory.contains(loadingMessage)) {
             chatHistory.removeChild(loadingMessage);
         }
 
-        // タイムアウトエラー（AbortError）の処理
         if (error.name === 'AbortError') {
-            displayMessage(`AI: 処理がタイムアウトしました。`, 'ai');
+            displayMessage(`処理がタイムアウトしました。(${timeoutDuration/1000}秒)`, 'ai');
         } else {
-            // その他の通信エラー
-            displayMessage(`AI: 処理中にエラーが発生しました: ${error.message}`, 'ai');
+            // その他の通信エラー。特に 'Unexpected token <' はここで捕捉されることが多い。
+            const errorMessage = error.message.includes("HTMLが返されている可能性があります") 
+                                     ? "サーバー内部でエラーが発生し、HTMLページが返されました。Flaskのログを確認してください。"
+                                     : error.message;
+
+            displayMessage(`処理中にエラーが発生しました: ${errorMessage}`, 'ai');
         }
         
     } finally {
@@ -310,6 +417,7 @@ async function handleSendMessage() {
         sendButton.disabled = false;
         
         // 8. ファイル入力をクリア（成功・失敗に関わらず）
+        filesToUpload = new DataTransfer(); 
         fileInput.value = ''; 
         renderAttachedFiles();
     }

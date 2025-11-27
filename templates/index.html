@@ -3,33 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AIレポート作成チャット</title>
+    <title>AIレポート・読書感想文作成チャット</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div id="app-container">
-        <div id="chat-area">
+        
+        <div id="mode-selector">
+            <label>
+                <input type="radio" name="creation_mode" value="general_report" checked>
+                レポート作成 📄
+            </label>
+            <label>
+                <input type="radio" name="creation_mode" value="book_report">
+                読書感想文作成 📚
+            </label>
+        </div>
+        
+        <div id="chat-area" data-mode="general_report">
             <div id="chat-history">
-                <div class="ai-message">こんにちは！レポート作成を始めましょう。</div>
+                <div class="ai-message">
+                    こんにちは！レポート作成モードです。<br>
+                    テーマや指示を入力し、必要に応じてファイルを添付してください。
+                </div>
             </div>
             
             <div id="input-area">
                 
                 <div id="attached-files">
-        </div>
+                    </div>
 
                 <textarea id="user-input" placeholder="質問や指示を入力してください..."></textarea>
                 
                 <div id="file-upload-container">
-                    <input type="file" id="file-input" multiple style="display: none;">
+                    <input type="file" id="file-input" style="display: none;" multiple>
                     
                     <button id="upload-button" title="ファイルを選択">
                         +
                     </button>
+                    <span id="file-hint" style="font-size: 0.8em; margin-left: 10px; color: #666;">
+                        (画像, PDF/EPUB, TXT)
+                    </span>
                 </div>
 
                 <button id="send-button" title="送信">
-                    &#x25B2; </button>
+                    &#x25B2; 
+                </button>
             </div>
         </div>
 
@@ -40,7 +59,7 @@
             
             <div id="report-footer">
                 <div id="download-box">
-                    <span>レポート.txt</span>
+                    <span id="report-filename">レポート.md</span>
                     <button id="download-button">download</button>
                 </div>
                 <div id="char-count">0 文字</div>
@@ -49,5 +68,55 @@
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const modeRadios = document.querySelectorAll('input[name="creation_mode"]');
+            const chatArea = document.getElementById('chat-area');
+            const fileInput = document.getElementById('file-input');
+            const fileHint = document.getElementById('file-hint');
+            const reportFilename = document.getElementById('report-filename');
+            const chatHistory = document.getElementById('chat-history');
+
+            // モード切り替え関数
+            function handleModeChange(event) {
+                const mode = event.target.value;
+                chatArea.setAttribute('data-mode', mode);
+                
+                // ファイル入力の許可タイプを切り替え
+                if (mode === 'book_report') {
+                    // 読書感想文モード: 書籍ファイルとプロンプトを許可
+                    fileInput.accept = '.pdf, .epub, .txt';
+                    fileInput.removeAttribute('multiple');
+                    fileHint.textContent = '(PDF, EPUB, TXTファイルを1つ)';
+                    reportFilename.textContent = '感想文.md';
+                    
+                    // チャット履歴にメッセージを追加 (初期化メッセージ)
+                    chatHistory.innerHTML += `<div class="ai-message">読書感想文モードに切り替わりました。書籍をアップロードし、感想文の要件を指示してください。</div>`;
+                } else {
+                    // レポート作成モード: 画像を許可
+                    fileInput.accept = 'image/*';
+                    fileInput.setAttribute('multiple', '');
+                    fileHint.textContent = '(画像ファイルを複数)';
+                    reportFilename.textContent = 'レポート.md';
+
+                    // チャット履歴にメッセージを追加 (初期化メッセージ)
+                    chatHistory.innerHTML += `<div class="ai-message">レポート作成モードに切り替わりました。テーマや指示を入力してください。</div>`;
+                }
+                
+                // ここで現在のアップロードファイル表示をクリアする処理（ファイルの排他利用のため）を実装することが推奨されます。
+                // 例: clearAttachedFiles(); (別途定義が必要)
+            }
+
+            modeRadios.forEach(radio => {
+                radio.addEventListener('change', handleModeChange);
+            });
+            
+            // ページロード時にも一度実行 (初期状態の設定)
+            document.querySelector('input[name="creation_mode"]:checked').dispatchEvent(new Event('change'));
+
+            // 注意: #upload-button, #send-button, #file-input の実際のロジック（ファイルの処理、API連携）は
+            // script.js で実装する必要がありますが、上記でモード情報とファイルタイプはHTMLと連動しました。
+        });
+    </script>
 </body>
 </html>
