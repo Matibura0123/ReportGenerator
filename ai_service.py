@@ -10,7 +10,7 @@ from typing import Optional, Tuple, Dict, Any, List
 from google.api_core.exceptions import DeadlineExceeded
 
 # --- 設定 ---
-HARDCODED_API_KEY = "AIzaSyD8EdjL2N2g7j1e42ebc-MdAzOZtjrj5VE"
+HARDCODED_API_KEY = "sample_api_key"#←ここをAPIキーに変える
 # ---------------------------------------------------------------
 
 API_KEY = os.getenv('GEMINI_API_KEY') or HARDCODED_API_KEY
@@ -141,4 +141,5 @@ def get_api_key_status() -> str:
     return 'missing'
 
 def get_model_name() -> str:
+
     return MODEL_NAME
