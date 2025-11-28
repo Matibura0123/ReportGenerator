@@ -3,4 +3,5 @@ google-genai
 google-cloud-firestore
 firebase-admin
 Pillow
+gunicorn
 google-api-core
