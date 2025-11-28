@@ -32,6 +32,8 @@ json_file_path = resource_path('static/repo-gen.json')
 # 環境変数 (Render Secret Files または Environment Variables で設定するキー名)
 SECRET_ENV_KEY = 'FIREBASE_CREDENTIALS_JSON'
 # ---------------------------------------------------------------
+#確認用
+print(SECRET_ENV_KEY)
 
 db = None
 is_logger_enabled = False
@@ -159,3 +161,4 @@ def log_to_firestore(
         db.collection('app_logs').add(log_data)
     except Exception as e:
         print(f"警告: ログをFirestoreに書き込めませんでした: {e}")
+
