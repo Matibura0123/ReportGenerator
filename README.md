@@ -4,7 +4,7 @@ firebase秘密鍵:repo-gen.jsonという名前でstatic内に置くこと
 
 Github公開リンク：https://matibura0123.github.io/ReportGenerator/
 
-一般公開リンク：
+一般公開リンク：https://reportgenerator-n0hx.onrender.com/
 
 
 ---------------リリースノート------------------
@@ -13,4 +13,4 @@ Github公開リンク：https://matibura0123.github.io/ReportGenerator/
 
 2025/11/26：ver1.0コード完成
 
-2025//：デプロイ完了
+2025/11/28：デプロイ完了
