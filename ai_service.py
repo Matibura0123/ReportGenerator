@@ -10,10 +10,10 @@ from typing import Optional, Tuple, Dict, Any, List
 from google.api_core.exceptions import DeadlineExceeded
 
 # --- 設定 ---
-HARDCODED_API_KEY = "sample_api_key"#←ここをAPIキーに変える
+GEMINI_API_KEY= "sample_api_key"#←ここをAPIキーに変える
 # ---------------------------------------------------------------
 
-API_KEY = os.getenv('GEMINI_API_KEY') or HARDCODED_API_KEY
+API_KEY = os.getenv('GEMINI_API_KEY') or GEMINI_API_KEY
 MODEL_NAME = "gemini-2.5-flash"
 
 # ロガー初期化
@@ -143,3 +143,4 @@ def get_api_key_status() -> str:
 def get_model_name() -> str:
 
     return MODEL_NAME
+
