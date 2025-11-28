@@ -1,13 +1,14 @@
+from typing import Optional
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
-from firebase_admin import storage  # Storage機能
+from firebase_admin import storage # Storage機能
 import datetime
 import os
-from typing import Optional
-
 import sys
+import json # JSONのパース用にインポートを追加
 
+# PyInstaller関連の関数はそのまま残します (ローカル実行時の互換性のため)
 def resource_path(relative_path):
     """
     PyInstallerでバンドルされた環境で、リソースファイルの絶対パスを取得する
@@ -25,10 +26,11 @@ def resource_path(relative_path):
 # ★【重要】GCPコンソールで作成した「実際のバケット名」に書き換えてください
 # 例: "tanii-report-gen-files"
 YOUR_BUCKET_NAME = "repo-gen-storage" 
+# ローカルファイルパス (Renderでは使用されない)
 json_file_path = resource_path('static/repo-gen.json') 
 
-# サービスアカウントキーのパス
-CREDENTIAL_PATH = os.environ.get('FIREBASE_CREDENTIALS_PATH', json_file_path)
+# 環境変数 (Render Secret Files または Environment Variables で設定するキー名)
+SECRET_ENV_KEY = 'FIREBASE_CREDENTIALS_JSON'
 # ---------------------------------------------------------------
 
 db = None
@@ -37,21 +39,43 @@ is_logger_enabled = False
 def initialize_firebase_logger():
     """
     Firebase Admin SDKを初期化し、FirestoreおよびStorageクライアントを準備する。
+    Render環境では環境変数から、ローカル環境ではファイルから認証情報を取得する。
     """
     global db, is_logger_enabled
     if is_logger_enabled:
         return True
+    
+    # 1. Renderの環境変数からJSON文字列を取得
+    secret_json_str = os.environ.get(SECRET_ENV_KEY)
+    
+    if secret_json_str:
+        # 認証情報をJSON文字列から読み込む (Renderでのデプロイ環境)
+        try:
+            cred_json = json.loads(secret_json_str)
+            cred = credentials.Certificate(cred_json)
+            print(f"\n[設定] Firebase認証情報: 環境変数 '{SECRET_ENV_KEY}' から読み込みました。")
+        except Exception as e:
+            print(f"\n[エラー] 環境変数から認証情報JSONをパース中にエラーが発生しました: {e}")
+            return False
+    else:
+        # 2. 環境変数がなければ、ローカルファイルから認証情報を読み込む (ローカル開発/PyInstaller環境)
+        absolute_credential_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), json_file_path)
 
-    absolute_credential_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), CREDENTIAL_PATH)
+        if not os.path.exists(absolute_credential_path):
+            print(f"\n[警告] Firebaseサービスアカウントキー '{absolute_credential_path}' が見つかりません。ログ機能は無効です。")
+            is_logger_enabled = False
+            return False
+        
+        try:
+            cred = credentials.Certificate(absolute_credential_path)
+            print(f"\n[設定] Firebase認証情報: ローカルファイル '{json_file_path}' から読み込みました。")
+        except Exception as e:
+            print(f"\n[エラー] ローカルファイルからの認証情報読み込み中にエラーが発生しました: {e}")
+            return False
 
-    if not os.path.exists(absolute_credential_path):
-        print(f"\n[警告] Firebaseサービスアカウントキー '{absolute_credential_path}' が見つかりません。ログ機能は無効です。")
-        is_logger_enabled = False
-        return False
-
+    # 3. Firebaseを初期化
     try:
         if not firebase_admin._apps:
-            cred = credentials.Certificate(absolute_credential_path)
             # Storageバケットを設定に追加
             firebase_admin.initialize_app(cred, {
                 'storageBucket': YOUR_BUCKET_NAME
@@ -59,7 +83,7 @@ def initialize_firebase_logger():
         
         db = firestore.client()
         is_logger_enabled = True
-        print(f"\n[設定] Firebase Firestoreロガー有効 (Bucket: {YOUR_BUCKET_NAME})")
+        print(f"[設定] Firebase Firestoreロガー有効 (Bucket: {YOUR_BUCKET_NAME})")
         return True
     except Exception as e:
         print(f"\n[エラー] Firebase初期化中にエラーが発生しました: {e}")
