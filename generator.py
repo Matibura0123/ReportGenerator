@@ -99,10 +99,13 @@ def get_base64_image_data_from_upload(file):
     except: return None
 
 # --- Routes ---
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET', 'POST','HEAD'])
 def index():
     user_id = 'exe'
     default_ws = '　'
+
+    if request.method=='HEAD':
+        print('HEAD')
 
     if request.method == 'GET':
         if ai_service.get_api_key_status() == 'missing':
@@ -197,4 +200,5 @@ if __name__ == '__main__':
     Timer(1, lambda: webbrowser.open_new_tab(app_url)).start()
 
     # Flaskサーバーの起動
+
     app.run(host=host, port=port)
