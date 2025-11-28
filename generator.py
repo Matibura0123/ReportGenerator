@@ -105,7 +105,7 @@ def index():
     default_ws = '　'
 
     if request.method=='HEAD':
-        print('HEAD')
+        return 'HEAD'
 
     if request.method == 'GET':
         if ai_service.get_api_key_status() == 'missing':
@@ -202,3 +202,4 @@ if __name__ == '__main__':
     # Flaskサーバーの起動
 
     app.run(host=host, port=port)
+
