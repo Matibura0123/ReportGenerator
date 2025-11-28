@@ -1,17 +1,6 @@
-# Webアプリケーションフレームワーク (必須)
-Flask==3.0.3
-
-# データ処理・分析 (CSV/df_infoの表示に必須)
-pandas==2.2.2
-
-# AI/LLM連携 (AIチャット機能に必須)
-# Googleの生成AIモデルを使う場合
-google-genai>=0.12.0
-
-# サーバー起動 (開発環境で動かすなら不要。本番環境へのデプロイ時に使用)
-gunicorn  # または waitress
-
-# ファイル処理関連 (読書感想文モードのPDF/EPUB/画像処理で必要に応じて追加)
-# PDFや画像からテキストを抽出する場合
-pypdf>=4.2.0
-Pillow>=10.3.0
+Flask
+google-genai
+google-cloud-firestore
+firebase-admin
+Pillow
+google-api-core
