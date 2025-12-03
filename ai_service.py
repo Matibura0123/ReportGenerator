@@ -117,7 +117,7 @@ def process_report_request(
             config={"system_instruction": system_instruction_text, "temperature": 0.7}
         )
         generated_text = response.text
-        if generated_text is None:
+        if generated_text is None:
             # API呼び出しは成功したが、レスポンスが空/Noneの場合
             error_msg = "エラー: AIからの応答テキストが空でした。"
             logger_service.log_to_firestore('ERROR', error_msg, prompt, user_id, workspace_id, **meta_data)
@@ -153,6 +153,7 @@ def get_api_key_status() -> str:
 def get_model_name() -> str:
 
     return MODEL_NAME
+
 
 
 
