@@ -103,6 +103,7 @@ def process_report_request(
             user_query = f"--- USER PROMPT ---\n{prompt}\n\n感想文を作成してください。"
     
     final_text_prompt = full_text_content + user_query
+    print(final_text_prompt)
     if final_text_prompt:
         contents.append(final_text_prompt)
 
@@ -152,6 +153,7 @@ def get_api_key_status() -> str:
 def get_model_name() -> str:
 
     return MODEL_NAME
+
 
 
 
