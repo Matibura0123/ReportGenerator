@@ -3,15 +3,17 @@ body, html {
     margin: 0;
     padding: 0;
     font-family: sans-serif;
-    height: 100%;
-    overflow: hidden; 
+    /* モバイルブラウザのアドレスバーによるvhの変動対策としてheightは100%を基本とする */
+    height: 100%; 
+    overflow: hidden; /* PC版では基本的にスクロールを抑制 */
     background-color: #f4f7f6;
 }
 
 /* --- 1. 左右分割レイアウト (Flexbox) --- */
 #app-container {
     display: flex;
-    height: 100vh; /* 画面いっぱいに広げる */
+    /* PC版は画面いっぱいに広げる */
+    height: 100%; 
 }
 
 /* 左側: チャットエリア */
@@ -39,7 +41,7 @@ body, html {
     padding: 15px;
 }
 
-/* メッセージバブルの共通スタイル */
+/* メッセージバブルのスタイル */
 .user-message, .ai-message {
     max-width: 80%; 
     padding: 10px 15px;
@@ -48,15 +50,11 @@ body, html {
     line-height: 1.5;
     word-wrap: break-word; 
 }
-
-/* AIの発言スタイル (左寄せ、灰色) */
 .ai-message {
     margin-right: auto; 
     background-color: #e5e5ea;
     color: #000;
 }
-
-/* ユーザーの発言スタイル (右寄せ、緑系) */
 .user-message {
     margin-left: auto; 
     background-color: #c5e5c7; 
@@ -65,37 +63,30 @@ body, html {
 
 /* --- 添付ファイル表示エリア (共通) --- */
 #attached-files {
-    /* 絶対位置指定で入力エリアの上部に配置 */
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
-    
     padding: 5px 10px;
     background-color: #f7fff7; 
     border-bottom: 1px solid #e0ffe0;
-    
     display: flex;
     flex-wrap: wrap; 
     gap: 8px; 
     z-index: 10;
-    
     display: none; 
 }
 
-/* --- ファイルチップ (共通) --- */
+/* ファイルチップのスタイル */
 .file-chip {
     display: flex;
     align-items: center;
-    
     padding: 4px 8px;
     background-color: #e0ffe0; 
     border-radius: 12px;
-    
     font-size: 13px;
     color: #333;
 }
-
 .file-chip-name {
     max-width: 120px;
     white-space: nowrap;
@@ -103,7 +94,6 @@ body, html {
     text-overflow: ellipsis;
     margin-right: 5px;
 }
-
 .remove-file-button {
     background: none;
     border: none;
@@ -114,10 +104,6 @@ body, html {
     padding: 0 0 0 5px;
 }
 
-.remove-file-button:hover {
-    color: #c00;
-}
-
 /* --- 入力欄とボタンの配置 --- */
 #input-area {
     display: flex;
@@ -126,15 +112,12 @@ body, html {
     background-color: #ffffff;
     position: relative; 
 }
-
-/* ★★★ ファイルアップロードボタン (左下) のスタイル ★★★ */
 #file-upload-container {
     position: absolute;
     left: 15px; 
     bottom: 28px; 
     z-index: 10;
 }
-
 #upload-button {
     background-color: transparent; 
     border: none; 
@@ -150,12 +133,6 @@ body, html {
     justify-content: center;
     transition: color 0.2s; 
 }
-
-#upload-button:hover {
-    background-color: transparent;
-    color: #000; 
-}
-
 #user-input {
     flex-grow: 1;
     min-height: 50px;
@@ -166,8 +143,6 @@ body, html {
     border-radius: 8px;
     box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
 }
-
-/* ★★★ 送信ボタン (右下) のスタイル ★★★ */
 #send-button {
     position: absolute;
     right: 20px; 
@@ -187,7 +162,6 @@ body, html {
     z-index: 10; 
     transition: background-color 0.2s;
 }
-
 #send-button:hover {
     background-color: #333; 
 }
@@ -202,25 +176,21 @@ body, html {
     border-radius: 5px;
     margin-bottom: 10px;
 }
-
 #report-footer {
     display: flex;
     justify-content: space-between; 
     align-items: center;
     padding: 10px 0; 
 }
-
 #download-box {
     display: flex;
     align-items: center;
 }
-
 #report-filename {
     font-size: 14px;
     color: #666;
     margin-right: 10px;
 }
-
 #download-button {
     background-color: #007bff;
     color: white;
@@ -230,11 +200,6 @@ body, html {
     cursor: pointer;
     font-size: 14px;
 }
-
-#download-button:hover {
-    background-color: #0056b3;
-}
-
 #char-count {
     padding: 5px 10px;
     border: 1px solid #ccc;
@@ -242,81 +207,63 @@ body, html {
     font-size: 14px;
 }
 
-/* --- モード選択ボタンのスタイル (共通) --- */
+/* --- モード選択ボタンのスタイル --- */
 #mode-selector {
     padding: 10px;
     text-align: center;
     border-bottom: 1px solid #eee;
     background-color: #f9f9f9;
 }
-
 #mode-selector label {
     margin: 0 10px;
     cursor: pointer;
 }
 
-#mode-selector input[type="radio"] {
-    margin-right: 5px;
-}
-
 
 /* ================================================= */
-/* ============= 📱 スマートフォン向けCSS (修正済み) ============= */
+/* ============= 📱 スマートフォン向けCSS (小画面対応) ============= */
 /* ================================================= */
 
 @media (max-width: 768px) {
-    /* 画面全体 */
+    
+    /* ★全画面のスクロールを有効化 */
+    body, html {
+        overflow-y: auto; 
+    }
+
     #app-container {
-        /* 左右分割から上下分割へ変更 */
         flex-direction: column;
-        height: 100vh;
-        overflow-y: auto; /* 全画面をスクロール可能にする */
+        /* ★高さはコンテンツに合わせるが、画面高の最小値を保証 */
+        height: auto;
+        min-height: 100vh;
     }
 
     /* チャットエリア (上半分) */
     #chat-area {
-        /* 高さ固定を外し、コンテンツ量と画面サイズに応じて柔軟に調整 */
         flex-shrink: 0; 
         min-height: 250px; 
         height: auto;
-        max-height: 50vh; /* 画面半分よりは大きくならないように上限を設定 */
+        /* チャット履歴の最大高さを画面の約半分に制限し、レポートエリアが見えるようにする */
+        max-height: 50vh; 
         border-right: none;
         border-bottom: 5px solid #000; 
     }
     
-    /* チャット履歴 */
-    #chat-history {
-        padding: 10px;
-    }
-
-    /* 入力エリア */
+    /* 入力エリアのボタン調整 */
     #input-area {
         padding: 40px 10px 10px 5px; 
     }
-
-    /* ユーザー入力欄 */
     #user-input {
         padding: 10px 50px 10px 40px; 
         min-height: 40px;
     }
-
-    /* ファイルアップロードコンテナ */
     #file-upload-container {
         left: 10px; 
         bottom: 18px; 
     }
-    
     #file-hint {
-        /* スマホではスペースが少ないためヒントを非表示にする */
         display: none !important;
     }
-    
-    #upload-button {
-        height: 40px; 
-        width: 40px;
-    }
-
-    /* 送信ボタン */
     #send-button {
         right: 10px;
         bottom: 18px; 
@@ -327,49 +274,36 @@ body, html {
 
     /* レポートエリア (下半分) */
     #report-area {
-        /* 残りのスペースを埋めつつ、最小高さを確保 */
+        /* 残りのスペースを埋め、コンテンツが少なすぎても一定の高さを確保 */
         flex: 1; 
-        min-height: 300px;
+        min-height: 300px; 
         padding: 10px;
     }
 
-    /* レポート表示エリア */
-    #report-display {
-        padding: 5px;
-        margin-bottom: 5px;
-        font-size: 14px;
-    }
-    
-    /* レポートフッター (見切れ防止の修正) */
+    /* レポートフッター (見切れ防止のため縦並びに変更) */
     #report-footer {
-        /* 横並びから縦並びに変更 */
         flex-direction: column; 
-        /* 左寄せに戻す */
-        align-items: flex-start; 
+        align-items: flex-start; /* 全体を左寄せ */
         padding: 5px 0 0 0;
     }
     
     #download-box {
-        /* フッターの全幅を使う */
         width: 100%; 
-        /* ファイル名とボタンを左右に配置 */
-        justify-content: space-between;
+        justify-content: space-between; /* ファイル名とボタンを左右に配置 */
         margin-bottom: 8px; 
     }
 
     #char-count {
-        /* 右寄せにする */
+        /* 文字数カウントを右端に寄せる */
         align-self: flex-end; 
         padding: 3px 8px;
         font-size: 13px;
     }
     
-    /* ファイルチップの調整 */
+    /* その他の小画面調整 */
     .file-chip-name {
         max-width: 80px; 
     }
-    
-    /* モードセレクターの調整 */
     #mode-selector label {
         margin: 0 5px;
         font-size: 14px;
