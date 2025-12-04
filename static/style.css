@@ -1,5 +1,3 @@
-/* style.css の完全版 */
-
 /* --- 基本リセット --- */
 body, html {
     margin: 0;
@@ -54,19 +52,18 @@ body, html {
 /* AIの発言スタイル (左寄せ、灰色) */
 .ai-message {
     margin-right: auto; 
-    
+    background-color: #e5e5ea;
     color: #000;
 }
 
 /* ユーザーの発言スタイル (右寄せ、緑系) */
 .user-message {
     margin-left: auto; 
-    background-color: #e5e5ea;
+    background-color: #c5e5c7; /* 少し濃い緑にして視認性を向上 */
     color: #000; 
 }
 
-/* style.css の任意の場所に追加 */
-
+/* --- 添付ファイル表示エリア (共通) --- */
 #attached-files {
     /* 絶対位置指定で入力エリアの上部に配置 */
     position: absolute;
@@ -84,12 +81,11 @@ body, html {
     gap: 8px; /* チップ間のスペース */
     z-index: 10;
     
-    /* 初期状態では非表示にしておく */
+    /* 初期状態では非表示にしておく (JavaScriptで切り替え) */
     display: none; 
 }
 
-/* style.css の任意の場所に追加 */
-
+/* --- ファイルチップ (共通) --- */
 .file-chip {
     display: flex;
     align-items: center;
@@ -125,9 +121,10 @@ body, html {
     color: #c00;
 }
 
-/* --- 入力欄とボタンの配置 --- */
+/* --- 入力欄とボタンの配置 (PC版基準) --- */
 #input-area {
     display: flex;
+    /* ファイル情報表示分の高さを含むようにpaddingを調整 */
     padding: 40px 15px 15px 10px;
     border-top: 1px solid #eee;
     background-color: #ffffff;
@@ -165,7 +162,7 @@ body, html {
 
 #upload-button:hover {
     background-color: transparent;
-    color: #000; /* ホバーで緑色に変化 */
+    color: #000; /* ホバーで黒色に変化 */
 }
 /* ★★★ ファイルアップロードボタンここまで ★★★ */
 
@@ -177,6 +174,9 @@ body, html {
     padding: 10px 55px 10px 45px; 
     margin-right: 0; 
     resize: none; 
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
 }
 
 /* ★★★ 送信ボタン (右下) のスタイル ★★★ */
@@ -210,8 +210,7 @@ body, html {
 }
 /* ★★★ 送信ボタンここまで ★★★ */
 
-
-/* --- 3. レポートエリアの構造 --- */
+/* --- 3. レポートエリアの構造 (PC版基準) --- */
 #report-display {
     flex-grow: 1;
     overflow-y: auto; 
@@ -229,7 +228,28 @@ body, html {
 }
 
 #download-box {
-    /* スタイルが必要になったら追記 */
+    display: flex;
+    align-items: center;
+}
+
+#report-filename {
+    font-size: 14px;
+    color: #666;
+    margin-right: 10px;
+}
+
+#download-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#download-button:hover {
+    background-color: #0056b3;
 }
 
 #char-count {
@@ -237,4 +257,125 @@ body, html {
     border: 1px solid #ccc;
     border-radius: 3px;
     font-size: 14px;
+}
+
+/* --- モード選択ボタンのスタイル (共通) --- */
+#mode-selector {
+    padding: 10px;
+    text-align: center;
+    border-bottom: 1px solid #eee;
+    background-color: #f9f9f9;
+}
+
+#mode-selector label {
+    margin: 0 10px;
+    cursor: pointer;
+}
+
+#mode-selector input[type="radio"] {
+    margin-right: 5px;
+}
+
+
+/* ================================================= */
+/* ============= 📱 スマートフォン向けCSS ============= */
+/* ================================================= */
+
+@media (max-width: 768px) {
+    /* 画面全体 */
+    #app-container {
+        /* 左右分割から上下分割へ変更 */
+        flex-direction: column;
+        /* スマホでは高さ100%はvhよりもheight: 100%の方が安全だが、ここではvhを維持 */
+        height: 100vh;
+        overflow-y: auto; /* 全体をスクロール可能にする */
+    }
+
+    /* チャットエリア (上半分) */
+    #chat-area {
+        /* 高さを画面の約40%に設定 (必要に応じてスクロール) */
+        height: 40vh; 
+        min-height: 200px; /* 最小高さを確保 */
+        border-right: none;
+        border-bottom: 5px solid #000; /* レポートエリアとの区切りを強調 */
+    }
+    
+    /* チャット履歴 */
+    #chat-history {
+        padding: 10px;
+    }
+
+    /* 入力エリア */
+    #input-area {
+        /* 上下のpaddingを調整 */
+        padding: 40px 10px 10px 5px; 
+    }
+
+    /* ユーザー入力欄 */
+    #user-input {
+        /* paddingを小さくして、画面幅を有効活用 */
+        padding: 10px 50px 10px 40px; 
+        min-height: 40px;
+    }
+
+    /* ファイルアップロードコンテナ */
+    #file-upload-container {
+        left: 10px; 
+        bottom: 18px; /* 入力エリアの下端近くに配置 */
+    }
+    
+    #file-hint {
+        /* スマホではスペースが少ないためヒントを非表示にする */
+        display: none !important;
+    }
+
+    /* 送信ボタン */
+    #send-button {
+        right: 10px;
+        bottom: 18px; /* 入力エリアの下端近くに配置 */
+        height: 40px; /* サイズを少し大きくしてタップしやすく */
+        width: 40px;
+        font-size: 1.8em;
+    }
+
+    /* レポートエリア (下半分) */
+    #report-area {
+        /* 高さを画面の残りの部分に設定 */
+        height: 60vh;
+        min-height: 300px;
+        padding: 10px;
+    }
+
+    /* レポート表示エリア */
+    #report-display {
+        padding: 5px;
+        margin-bottom: 5px;
+        font-size: 14px;
+    }
+    
+    /* レポートフッター */
+    #report-footer {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 5px 0 0 0;
+    }
+    
+    #download-box {
+        margin-bottom: 5px;
+        justify-content: space-between;
+    }
+
+    #char-count {
+        text-align: right;
+    }
+    
+    /* ファイルチップの調整 */
+    .file-chip-name {
+        max-width: 80px; /* スマホではファイル名をさらに短く表示 */
+    }
+    
+    /* モードセレクターの調整 */
+    #mode-selector label {
+        margin: 0 5px;
+    }
 }
