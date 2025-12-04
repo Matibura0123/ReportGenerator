@@ -59,7 +59,7 @@ body, html {
 /* ユーザーの発言スタイル (右寄せ、緑系) */
 .user-message {
     margin-left: auto; 
-    background-color: #c5e5c7; /* 少し濃い緑にして視認性を向上 */
+    background-color: #c5e5c7; 
     color: #000; 
 }
 
@@ -72,16 +72,14 @@ body, html {
     right: 0;
     
     padding: 5px 10px;
-    background-color: #f7fff7; /* 薄い緑色の背景で強調 */
+    background-color: #f7fff7; 
     border-bottom: 1px solid #e0ffe0;
     
-    /* ファイルが縦に並ばないようにFlexboxを使用 */
     display: flex;
-    flex-wrap: wrap; /* チップが多すぎるときに折り返す */
-    gap: 8px; /* チップ間のスペース */
+    flex-wrap: wrap; 
+    gap: 8px; 
     z-index: 10;
     
-    /* 初期状態では非表示にしておく (JavaScriptで切り替え) */
     display: none; 
 }
 
@@ -91,7 +89,7 @@ body, html {
     align-items: center;
     
     padding: 4px 8px;
-    background-color: #e0ffe0; /* チップ自体の背景色 */
+    background-color: #e0ffe0; 
     border-radius: 12px;
     
     font-size: 13px;
@@ -99,7 +97,6 @@ body, html {
 }
 
 .file-chip-name {
-    /* ファイル名が長すぎる場合に省略 */
     max-width: 120px;
     white-space: nowrap;
     overflow: hidden;
@@ -121,14 +118,12 @@ body, html {
     color: #c00;
 }
 
-/* --- 入力欄とボタンの配置 (PC版基準) --- */
+/* --- 入力欄とボタンの配置 --- */
 #input-area {
     display: flex;
-    /* ファイル情報表示分の高さを含むようにpaddingを調整 */
     padding: 40px 15px 15px 10px;
     border-top: 1px solid #eee;
     background-color: #ffffff;
-    /* ボタン配置の基準点 */
     position: relative; 
 }
 
@@ -141,19 +136,15 @@ body, html {
 }
 
 #upload-button {
-    /* 枠なし・背景透明の「＋」アイコン */
     background-color: transparent; 
     border: none; 
-    color: #666; /* アイコンの色を濃い灰色に */
-    
+    color: #666; 
     cursor: pointer;
-    
-    font-size: 1.5em; /* サイズを大きく */
-    line-height: 0.8; /* 中央寄せの微調整 */
+    font-size: 1.5em; 
+    line-height: 0.8; 
     height: 35px; 
     width: 35px;
     padding: 0;
-    
     display: flex;
     align-items: center;
     justify-content: center;
@@ -162,14 +153,11 @@ body, html {
 
 #upload-button:hover {
     background-color: transparent;
-    color: #000; /* ホバーで黒色に変化 */
+    color: #000; 
 }
-/* ★★★ ファイルアップロードボタンここまで ★★★ */
-
 
 #user-input {
     flex-grow: 1;
-    /* 左側(アップロードボタン)と右側(送信ボタン)の両方にスペースを確保 */
     min-height: 50px;
     padding: 10px 55px 10px 45px; 
     margin-right: 0; 
@@ -184,20 +172,15 @@ body, html {
     position: absolute;
     right: 20px; 
     bottom: 28px; 
-    
-    /* 黒い円のスタイル */
     background-color: #000; 
-    color: #fff; /* アイコンの色を白に */
+    color: #fff; 
     border: none;
     cursor: pointer;
-    
-    /* アイコンの視認性向上のためサイズ調整 */
     font-size: 1.5em; 
     height: 35px; 
     width: 35px;
     padding: 0;
     border-radius: 50%; 
-    
     display: flex;
     align-items: center;
     justify-content: center;
@@ -208,9 +191,9 @@ body, html {
 #send-button:hover {
     background-color: #333; 
 }
-/* ★★★ 送信ボタンここまで ★★★ */
 
-/* --- 3. レポートエリアの構造 (PC版基準) --- */
+
+/* --- 3. レポートエリアの構造 --- */
 #report-display {
     flex-grow: 1;
     overflow-y: auto; 
@@ -278,7 +261,7 @@ body, html {
 
 
 /* ================================================= */
-/* ============= 📱 スマートフォン向けCSS ============= */
+/* ============= 📱 スマートフォン向けCSS (修正済み) ============= */
 /* ================================================= */
 
 @media (max-width: 768px) {
@@ -286,18 +269,19 @@ body, html {
     #app-container {
         /* 左右分割から上下分割へ変更 */
         flex-direction: column;
-        /* スマホでは高さ100%はvhよりもheight: 100%の方が安全だが、ここではvhを維持 */
         height: 100vh;
-        overflow-y: auto; /* 全体をスクロール可能にする */
+        overflow-y: auto; /* 全画面をスクロール可能にする */
     }
 
     /* チャットエリア (上半分) */
     #chat-area {
-        /* 高さを画面の約40%に設定 (必要に応じてスクロール) */
-        height: 40vh; 
-        min-height: 200px; /* 最小高さを確保 */
+        /* 高さ固定を外し、コンテンツ量と画面サイズに応じて柔軟に調整 */
+        flex-shrink: 0; 
+        min-height: 250px; 
+        height: auto;
+        max-height: 50vh; /* 画面半分よりは大きくならないように上限を設定 */
         border-right: none;
-        border-bottom: 5px solid #000; /* レポートエリアとの区切りを強調 */
+        border-bottom: 5px solid #000; 
     }
     
     /* チャット履歴 */
@@ -307,13 +291,11 @@ body, html {
 
     /* 入力エリア */
     #input-area {
-        /* 上下のpaddingを調整 */
         padding: 40px 10px 10px 5px; 
     }
 
     /* ユーザー入力欄 */
     #user-input {
-        /* paddingを小さくして、画面幅を有効活用 */
         padding: 10px 50px 10px 40px; 
         min-height: 40px;
     }
@@ -321,27 +303,32 @@ body, html {
     /* ファイルアップロードコンテナ */
     #file-upload-container {
         left: 10px; 
-        bottom: 18px; /* 入力エリアの下端近くに配置 */
+        bottom: 18px; 
     }
     
     #file-hint {
         /* スマホではスペースが少ないためヒントを非表示にする */
         display: none !important;
     }
+    
+    #upload-button {
+        height: 40px; 
+        width: 40px;
+    }
 
     /* 送信ボタン */
     #send-button {
         right: 10px;
-        bottom: 18px; /* 入力エリアの下端近くに配置 */
-        height: 40px; /* サイズを少し大きくしてタップしやすく */
+        bottom: 18px; 
+        height: 40px; 
         width: 40px;
         font-size: 1.8em;
     }
 
     /* レポートエリア (下半分) */
     #report-area {
-        /* 高さを画面の残りの部分に設定 */
-        height: 60vh;
+        /* 残りのスペースを埋めつつ、最小高さを確保 */
+        flex: 1; 
         min-height: 300px;
         padding: 10px;
     }
@@ -353,29 +340,38 @@ body, html {
         font-size: 14px;
     }
     
-    /* レポートフッター */
+    /* レポートフッター (見切れ防止の修正) */
     #report-footer {
-        flex-direction: column;
-        align-items: stretch;
+        /* 横並びから縦並びに変更 */
+        flex-direction: column; 
+        /* 左寄せに戻す */
+        align-items: flex-start; 
         padding: 5px 0 0 0;
     }
     
     #download-box {
-        margin-bottom: 5px;
+        /* フッターの全幅を使う */
+        width: 100%; 
+        /* ファイル名とボタンを左右に配置 */
         justify-content: space-between;
+        margin-bottom: 8px; 
     }
 
     #char-count {
-        text-align: right;
+        /* 右寄せにする */
+        align-self: flex-end; 
+        padding: 3px 8px;
+        font-size: 13px;
     }
     
     /* ファイルチップの調整 */
     .file-chip-name {
-        max-width: 80px; /* スマホではファイル名をさらに短く表示 */
+        max-width: 80px; 
     }
     
     /* モードセレクターの調整 */
     #mode-selector label {
         margin: 0 5px;
+        font-size: 14px;
     }
 }
